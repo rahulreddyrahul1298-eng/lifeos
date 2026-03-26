@@ -11,6 +11,8 @@ import {
   groupByCategory,
 } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const token = req.cookies.get("token")?.value;
   if (!token)
