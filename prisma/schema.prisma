@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  income        Float     @default(0)
+  budget        Float     @default(0)
+  isPremium     Boolean   @default(false)
+  onboarded     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  habits          Habit[]
+  expenses        Expense[]
+  goals           Goal[]
+  categoryBudgets CategoryBudget[]
+}
+
+model CategoryBudget {
+  id            String    @id @default(cuid())
+  category      String
+  limit         Float
+  userId        String
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+}
+
+model Habit {
+  id            String    @id @default(cuid())
+  name          String
+  streak        Int       @default(0)
+  userId        String
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completions   HabitCompletion[]
+}
+
+model HabitCompletion {
+  id            String    @id @default(cuid())
+  habitId       String
+  date          String
+  createdAt     DateTime  @default(now())
+
+  habit         Habit     @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@unique([habitId, date])
+}
+
+model Expense {
+  id            String    @id @default(cuid())
+  title         String
+  amount        Float
+  category      String    @default("Other")
+  date          String
+  userId        String
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Goal {
+  id            String    @id @default(cuid())
+  title         String
+  completed     Boolean   @default(false)
+  userId        String
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
