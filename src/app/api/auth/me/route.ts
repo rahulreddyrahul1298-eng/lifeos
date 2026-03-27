@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
         name: true,
         income: true,
         budget: true,
+        occupation: true,
+        bank: true,
         isPremium: true,
         onboarded: true,
       },

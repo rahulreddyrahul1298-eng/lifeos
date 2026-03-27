@@ -15,6 +15,8 @@ model User {
   name          String?
   income        Float     @default(0)
   budget        Float     @default(0)
+  occupation    String?
+  bank          String?
   isPremium     Boolean   @default(false)
   onboarded     Boolean   @default(false)
   createdAt     DateTime  @default(now())
@@ -23,6 +25,7 @@ model User {
   habits          Habit[]
   expenses        Expense[]
   goals           Goal[]
+  debts           Debt[]
   categoryBudgets CategoryBudget[]
 }
 
@@ -76,6 +79,22 @@ model Goal {
   id            String    @id @default(cuid())
   title         String
   completed     Boolean   @default(false)
+  targetAmount  Float?
+  savedAmount   Float     @default(0)
+  deadline      String?
+  icon          String?
+  userId        String
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Debt {
+  id            String    @id @default(cuid())
+  name          String
+  totalAmount   Float
+  paidAmount    Float     @default(0)
+  monthlyEMI    Float     @default(0)
   userId        String
   createdAt     DateTime  @default(now())
 

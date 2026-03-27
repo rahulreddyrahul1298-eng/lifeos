@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LifeOS — Fix Your Life in 30 Days",
-  description: "Money. Discipline. Habits. One system. Track spending, build habits, and see real improvement every day.",
+  title: "LifeOS — Smart Personal Finance",
+  description: "Track spending, manage budgets, save for goals. Your personal finance assistant.",
   manifest: "/manifest.json",
 };
 
