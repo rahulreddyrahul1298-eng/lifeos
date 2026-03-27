@@ -1,7 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
-import { getMonthString, getTodayString, autoCategorize } from "@/lib/utils";
+import {
+  autoCategorize,
+  getMonthString,
+  getTodayString,
+  normalizeAmount,
+  summarizeBudgets,
+} from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +36,11 @@ export async function GET(req: NextRequest) {
 
   const expenses = await prisma.expense.findMany({
     where,
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
   });
 
-  const total = expenses.reduce((sum, e) => sum + e.amount, 0);
-  return NextResponse.json({ expenses, total });
+  const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  return NextResponse.json({ expenses, total, count: expenses.length });
 }
 
 export async function POST(req: NextRequest) {
@@ -42,49 +48,67 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { title, amount, category, date } = await req.json();
-  if (!title || !amount) {
+  if (!title || amount === undefined) {
     return NextResponse.json({ error: "Title and amount required" }, { status: 400 });
   }
 
-  // Auto-categorize if no category provided
-  const finalCategory = category || autoCategorize(title);
+  const normalizedAmount = Math.max(0, normalizeAmount(amount));
+  if (normalizedAmount <= 0) {
+    return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 });
+  }
+
+  const finalCategory = typeof category === "string" && category ? category : autoCategorize(title);
+  const expenseDate = typeof date === "string" && date ? date : getTodayString();
 
   const expense = await prisma.expense.create({
     data: {
-      title,
-      amount: parseFloat(amount),
+      title: String(title).trim(),
+      amount: normalizedAmount,
       category: finalCategory,
-      date: date || getTodayString(),
+      date: expenseDate,
       userId,
     },
   });
 
-  // Check if budget exceeded for this category
-  const categoryBudget = await prisma.categoryBudget.findUnique({
-    where: { userId_category: { userId, category: finalCategory } },
-  });
-
-  let alert = null;
-  if (categoryBudget) {
-    const monthExpenses = await prisma.expense.findMany({
+  const monthKey = expenseDate.slice(0, 7);
+  const [categoryBudgets, monthExpenses] = await Promise.all([
+    prisma.categoryBudget.findMany({ where: { userId } }),
+    prisma.expense.findMany({
       where: {
         userId,
-        category: finalCategory,
-        date: { startsWith: getMonthString() },
+        date: { startsWith: monthKey },
       },
-    });
-    const totalSpent = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
-    const pct = (totalSpent / categoryBudget.limit) * 100;
+      select: { category: true, amount: true },
+    }),
+  ]);
 
-    if (pct >= 100) {
-      const overBy = totalSpent - categoryBudget.limit;
-      alert = { type: "exceeded", category: finalCategory, overBy };
-    } else if (pct >= 90) {
-      alert = { type: "warning", category: finalCategory, pct: Math.round(pct) };
+  const summaries = summarizeBudgets(categoryBudgets, monthExpenses);
+  const impactedBudget = summaries.find((summary) => summary.category === finalCategory);
+
+  let alert = null;
+  if (impactedBudget) {
+    if (impactedBudget.exceeded) {
+      alert = {
+        type: "exceeded",
+        category: finalCategory,
+        overBy: Math.round(impactedBudget.overBy),
+        transferredFromOther: Math.round(impactedBudget.transferredFromOther),
+      };
+    } else if (impactedBudget.percent >= 90 && impactedBudget.effectiveLimit > 0) {
+      alert = {
+        type: "warning",
+        category: finalCategory,
+        pct: impactedBudget.percent,
+        transferredFromOther: Math.round(impactedBudget.transferredFromOther),
+      };
     }
   }
 
-  return NextResponse.json({ expense, alert, suggestedCategory: finalCategory });
+  return NextResponse.json({
+    expense,
+    alert,
+    suggestedCategory: finalCategory,
+  });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -98,3 +122,4 @@ export async function DELETE(req: NextRequest) {
   await prisma.expense.deleteMany({ where: { id, userId } });
   return NextResponse.json({ success: true });
 }
+

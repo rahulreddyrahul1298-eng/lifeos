@@ -27,6 +27,21 @@ model User {
   goals           Goal[]
   debts           Debt[]
   categoryBudgets CategoryBudget[]
+  bankAccounts    BankAccount[]
+}
+
+model BankAccount {
+  id              String    @id @default(cuid())
+  bankName        String
+  accountHolder   String
+  accountNumber   String
+  ifscCode        String
+  accountType     String    @default("Savings")
+  isPrimary       Boolean   @default(false)
+  userId          String
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CategoryBudget {

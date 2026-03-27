@@ -1,19 +1,22 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  OCCUPATIONS,
   BANKS,
   CATEGORIES,
   GOAL_PRESETS,
+  OCCUPATIONS,
+  formatCurrency,
   getSmartDefaults,
+  normalizeAmount,
 } from "@/lib/utils";
 
 type GoalEntry = {
   title: string;
   icon: string;
   targetAmount: string;
+  savedAmount: string;
   deadline: string;
 };
 
@@ -21,394 +24,470 @@ type DebtEntry = {
   name: string;
   totalAmount: string;
   monthlyEMI: string;
+  paidAmount: string;
 };
 
-type CategoryEntry = {
+type CategoryBudgetEntry = {
   name: string;
   limit: number;
-  icon: string;
-  color: string;
 };
+
+const steps = [
+  "Who are you?",
+  "Income and bank",
+  "Choose categories",
+  "Set budgets",
+  "Savings goals",
+  "Debts",
+  "Review",
+];
 
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Step 1
   const [occupation, setOccupation] = useState("");
-  // Step 2
   const [income, setIncome] = useState("");
   const [bank, setBank] = useState("");
-  // Step 3
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  // Step 4
-  const [categoryBudgets, setCategoryBudgets] = useState<CategoryEntry[]>([]);
-  // Step 5
+  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudgetEntry[]>([]);
   const [goals, setGoals] = useState<GoalEntry[]>([]);
-  // Step 6
-  const [hasDebts, setHasDebts] = useState(false);
   const [debts, setDebts] = useState<DebtEntry[]>([]);
 
-  const totalSteps = 7;
-  const progressPct = Math.round((step / totalSteps) * 100);
+  const incomeValue = normalizeAmount(income);
+  const totalBudget = categoryBudgets.reduce((sum, category) => sum + category.limit, 0);
+  const unallocated = Math.max(0, incomeValue - totalBudget);
+  const overAllocated = Math.max(0, totalBudget - incomeValue);
+  const completion = Math.round((step / steps.length) * 100);
 
-  function toggleCategory(name: string) {
-    setSelectedCategories((prev) =>
-      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
-    );
-  }
+  const selectedOccupation = OCCUPATIONS.find((item) => item.value === occupation);
 
-  function toggleGoal(preset: typeof GOAL_PRESETS[number]) {
-    setGoals((prev) => {
-      const exists = prev.find((g) => g.title === preset.title);
-      if (exists) return prev.filter((g) => g.title !== preset.title);
-      return [...prev, { title: preset.title, icon: preset.icon, targetAmount: "", deadline: "" }];
-    });
-  }
+  const reviewGoals = goals.filter((goal) => goal.title.trim());
+  const reviewDebts = debts.filter((debt) => debt.name.trim() && normalizeAmount(debt.totalAmount) > 0);
 
-  function goToStep4() {
-    const inc = parseFloat(income) || 0;
-    const defaults = getSmartDefaults(inc, occupation);
-    const budgets: CategoryEntry[] = selectedCategories.map((name) => {
-      const cat = CATEGORIES.find((c) => c.name === name);
-      return {
+  const budgetHealthTone = overAllocated > 0 ? "bg-[#FDECEC] text-[#D93025]" : "bg-[#E9F7EF] text-[#0F9D58]";
+
+  const budgetSummary = useMemo(() => {
+    if (incomeValue <= 0) return 0;
+    return Math.min(100, Math.round((totalBudget / incomeValue) * 100));
+  }, [incomeValue, totalBudget]);
+
+  function moveToBudgetStep() {
+    const defaults = getSmartDefaults(incomeValue, occupation);
+    setCategoryBudgets(
+      selectedCategories.map((name) => ({
         name,
-        limit: defaults[name] || Math.round(inc * 0.05 / 100) * 100 || 1000,
-        icon: cat?.icon || "📦",
-        color: cat?.color || "#636E72",
-      };
-    });
-    setCategoryBudgets(budgets);
+        limit: defaults[name] || 0,
+      }))
+    );
     setStep(4);
   }
 
-  function updateBudget(name: string, val: string) {
-    setCategoryBudgets((prev) =>
-      prev.map((c) => (c.name === name ? { ...c, limit: parseInt(val) || 0 } : c))
+  function toggleCategory(name: string) {
+    setSelectedCategories((current) =>
+      current.includes(name)
+        ? current.filter((item) => item !== name)
+        : [...current, name]
     );
   }
 
-  function updateGoalField(title: string, field: "targetAmount" | "deadline", val: string) {
-    setGoals((prev) =>
-      prev.map((g) => (g.title === title ? { ...g, [field]: val } : g))
+  function updateBudget(name: string, value: string) {
+    const limit = Math.max(0, Math.round(normalizeAmount(value)));
+    setCategoryBudgets((current) =>
+      current.map((category) =>
+        category.name === name ? { ...category, limit } : category
+      )
+    );
+  }
+
+  function toggleGoal(title: string, icon: string) {
+    setGoals((current) => {
+      const exists = current.some((goal) => goal.title === title);
+      if (exists) return current.filter((goal) => goal.title !== title);
+      return [
+        ...current,
+        { title, icon, targetAmount: "", savedAmount: "", deadline: "" },
+      ];
+    });
+  }
+
+  function updateGoal(title: string, field: keyof GoalEntry, value: string) {
+    setGoals((current) =>
+      current.map((goal) =>
+        goal.title === title ? { ...goal, [field]: value } : goal
+      )
     );
   }
 
   function addDebt() {
-    setDebts((prev) => [...prev, { name: "", totalAmount: "", monthlyEMI: "" }]);
+    setDebts((current) => [
+      ...current,
+      { name: "", totalAmount: "", monthlyEMI: "", paidAmount: "" },
+    ]);
   }
 
-  function updateDebt(idx: number, field: keyof DebtEntry, val: string) {
-    setDebts((prev) => prev.map((d, i) => (i === idx ? { ...d, [field]: val } : d)));
+  function updateDebt(index: number, field: keyof DebtEntry, value: string) {
+    setDebts((current) =>
+      current.map((debt, currentIndex) =>
+        currentIndex === index ? { ...debt, [field]: value } : debt
+      )
+    );
   }
 
-  function removeDebt(idx: number) {
-    setDebts((prev) => prev.filter((_, i) => i !== idx));
+  function removeDebt(index: number) {
+    setDebts((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
-  const totalBudget = categoryBudgets.reduce((s, c) => s + c.limit, 0);
-  const incomeNum = parseFloat(income) || 0;
-  const unallocated = incomeNum - totalBudget;
-
-  async function handleSubmit() {
+  async function submitOnboarding() {
     setLoading(true);
     try {
-      const res = await fetch("/api/onboarding", {
+      const response = await fetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           occupation,
           bank,
-          income: incomeNum,
-          categories: categoryBudgets.map((c) => ({ name: c.name, limit: c.limit })),
-          goals: goals
-            .filter((g) => g.targetAmount)
-            .map((g) => ({
-              title: g.title,
-              icon: g.icon,
-              targetAmount: parseFloat(g.targetAmount) || 0,
-              deadline: g.deadline || null,
-            })),
-          debts: debts
-            .filter((d) => d.name && d.totalAmount)
-            .map((d) => ({
-              name: d.name,
-              totalAmount: parseFloat(d.totalAmount) || 0,
-              monthlyEMI: parseFloat(d.monthlyEMI) || 0,
-            })),
+          income: incomeValue,
+          categories: categoryBudgets.map((category) => ({
+            name: category.name,
+            limit: category.limit,
+          })),
+          goals: reviewGoals.map((goal) => ({
+            title: goal.title,
+            icon: goal.icon,
+            targetAmount: normalizeAmount(goal.targetAmount),
+            savedAmount: normalizeAmount(goal.savedAmount),
+            deadline: goal.deadline || null,
+          })),
+          debts: reviewDebts.map((debt) => ({
+            name: debt.name,
+            totalAmount: normalizeAmount(debt.totalAmount),
+            monthlyEMI: normalizeAmount(debt.monthlyEMI),
+            paidAmount: normalizeAmount(debt.paidAmount),
+          })),
         }),
       });
-      if (res.ok) {
+
+      if (response.ok) {
         router.push("/dashboard");
       }
-    } catch (err) {
-      console.error("Onboarding failed:", err);
+    } catch (error) {
+      console.error("Onboarding failed", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (
     <div className="min-h-screen bg-[#FAFBFC]">
-      {/* Progress bar */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-sm border-b border-gray-100">
-        <div className="h-1 bg-gray-100">
-          <div
-            className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
-        <div className="max-w-lg mx-auto px-6 py-3 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-500">Step {step} of {totalSteps}</span>
-          {step > 1 && (
+      <div className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-5 py-4">
+          <div>
+            <p className="eyebrow">LifeOS setup</p>
+            <h1 className="mt-1 text-lg font-extrabold text-slate-900">{steps[step - 1]}</h1>
+          </div>
+          {step > 1 ? (
             <button
-              onClick={() => setStep(step - 1)}
-              className="text-sm font-medium text-indigo-600"
+              onClick={() => setStep((current) => current - 1)}
+              className="text-sm font-semibold text-[#1A73E8]"
             >
               Back
             </button>
+          ) : (
+            <span className="text-sm font-semibold text-slate-400">1 of 7</span>
           )}
+        </div>
+        <div className="mx-auto h-1 w-full max-w-2xl overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-[#1A73E8] to-[#4C9AFF] transition-all duration-500"
+            style={{ width: `${completion}%` }}
+          />
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-6 pt-24 pb-32">
-        {/* STEP 1: Occupation */}
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-8 pb-28">
         {step === 1 && (
-          <div className="animate-fadeIn">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Who are you?</h1>
-            <p className="text-gray-500 mb-8">This helps us personalize your budget</p>
-            <div className="grid grid-cols-2 gap-3">
-              {OCCUPATIONS.map((occ) => (
-                <button
-                  key={occ.value}
-                  onClick={() => { setOccupation(occ.value); setStep(2); }}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all ${
-                    occupation === occ.value
-                      ? "border-indigo-500 bg-indigo-50"
-                      : "border-gray-100 bg-white hover:border-gray-200"
-                  }`}
-                >
-                  <span className="text-2xl">{occ.icon}</span>
-                  <p className="font-semibold text-gray-900 mt-2 text-sm">{occ.label}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{occ.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* STEP 2: Income & Bank */}
-        {step === 2 && (
-          <div className="animate-fadeIn">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Your Income</h1>
-            <p className="text-gray-500 mb-8">
-              {occupation === "parttime" || occupation === "freelancer"
-                ? "Enter your average monthly income"
-                : "How much do you earn per month?"}
+          <section className="card p-6 sm:p-8">
+            <p className="eyebrow">Step 1</p>
+            <h2 className="mt-2 text-3xl font-extrabold text-slate-900">Who are you?</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              We use this to prefill realistic budget ranges and savings suggestions.
             </p>
-
-            <div className="mb-6">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Monthly Income
-              </label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">₹</span>
-                <input
-                  type="number"
-                  value={income}
-                  onChange={(e) => setIncome(e.target.value)}
-                  placeholder="50000"
-                  className="input-field pl-8 text-lg font-semibold"
-                />
-              </div>
-            </div>
-
-            <div className="mb-8">
-              <label className="text-sm font-medium text-gray-700 mb-3 block">
-                Primary Bank
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {BANKS.map((b) => (
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {OCCUPATIONS.map((item) => {
+                const active = item.value === occupation;
+                return (
                   <button
-                    key={b}
-                    onClick={() => setBank(b)}
-                    className={`p-2.5 rounded-xl text-sm font-medium transition-all ${
-                      bank === b
-                        ? "bg-indigo-500 text-white"
-                        : "bg-white border border-gray-100 text-gray-700 hover:border-gray-200"
+                    key={item.value}
+                    onClick={() => {
+                      setOccupation(item.value);
+                      setStep(2);
+                    }}
+                    className={`rounded-[22px] border p-5 text-left transition ${
+                      active
+                        ? "border-[#1A73E8] bg-[#E8F0FE]"
+                        : "border-slate-200 bg-white hover:border-slate-300"
                     }`}
                   >
-                    {b}
+                    <div className="flex items-center justify-between">
+                      <span className="text-3xl">{item.icon}</span>
+                      <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-bold text-slate-500">
+                        {item.label}
+                      </span>
+                    </div>
+                    <p className="mt-4 text-lg font-bold text-slate-900">{item.label}</p>
+                    <p className="mt-1 text-sm text-slate-500">{item.desc}</p>
                   </button>
-                ))}
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {step === 2 && (
+          <section className="card p-6 sm:p-8">
+            <p className="eyebrow">Step 2</p>
+            <h2 className="mt-2 text-3xl font-extrabold text-slate-900">Monthly income and bank</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              {occupation === "freelancer" || occupation === "parttime"
+                ? "Share your average monthly income so we can keep the budgets flexible."
+                : "Share what comes in every month and where it usually lands."}
+            </p>
+
+            <div className="mt-6 space-y-5">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Monthly income</label>
+                <div className="relative">
+                  <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
+                  <input
+                    type="number"
+                    value={income}
+                    onChange={(event) => setIncome(event.target.value)}
+                    placeholder="50000"
+                    className="input-field pl-14 text-lg font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-3 block text-sm font-semibold text-slate-700">Primary bank</label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {BANKS.map((item) => {
+                    const active = bank === item;
+                    return (
+                      <button
+                        key={item}
+                        onClick={() => setBank(item)}
+                        className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                          active
+                            ? "border-[#1A73E8] bg-[#E8F0FE] text-[#1A73E8]"
+                            : "border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
             <button
               onClick={() => setStep(3)}
-              disabled={!income}
-              className="btn-primary w-full py-3.5 text-base disabled:opacity-40"
+              disabled={!income || !bank}
+              className="btn-primary mt-8 w-full py-4 text-base"
             >
               Continue
             </button>
-          </div>
+          </section>
         )}
 
-        {/* STEP 3: Categories */}
         {step === 3 && (
-          <div className="animate-fadeIn">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">What do you spend on?</h1>
-            <p className="text-gray-500 mb-8">Select your spending categories</p>
-            <div className="grid grid-cols-2 gap-3">
-              {CATEGORIES.map((cat) => {
-                const selected = selectedCategories.includes(cat.name);
+          <section className="card p-6 sm:p-8">
+            <p className="eyebrow">Step 3</p>
+            <h2 className="mt-2 text-3xl font-extrabold text-slate-900">What do you spend on?</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Pick the categories that matter for your monthly budget.
+            </p>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {CATEGORIES.map((category) => {
+                const active = selectedCategories.includes(category.name);
                 return (
                   <button
-                    key={cat.name}
-                    onClick={() => toggleCategory(cat.name)}
-                    className={`p-4 rounded-2xl border-2 text-left transition-all ${
-                      selected
-                        ? "border-indigo-500 bg-indigo-50"
-                        : "border-gray-100 bg-white hover:border-gray-200"
+                    key={category.name}
+                    onClick={() => toggleCategory(category.name)}
+                    className={`rounded-[22px] border p-4 text-left transition ${
+                      active
+                        ? "border-[#1A73E8] bg-[#E8F0FE]"
+                        : "border-slate-200 bg-white hover:border-slate-300"
                     }`}
                   >
                     <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-                      style={{ backgroundColor: cat.bgColor }}
+                      className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl"
+                      style={{ backgroundColor: category.bgColor }}
                     >
-                      {cat.icon}
+                      {category.icon}
                     </div>
-                    <p className="font-medium text-gray-900 mt-2 text-sm">{cat.name}</p>
+                    <p className="mt-4 text-base font-bold text-slate-900">{category.name}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {active ? "Included in your budget" : "Tap to add this category"}
+                    </p>
                   </button>
                 );
               })}
             </div>
-            <div className="mt-6">
-              <button
-                onClick={goToStep4}
-                disabled={selectedCategories.length === 0}
-                className="btn-primary w-full py-3.5 text-base disabled:opacity-40"
-              >
-                Continue ({selectedCategories.length} selected)
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 4: Set Budgets */}
-        {step === 4 && (
-          <div className="animate-fadeIn">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Set Your Budget</h1>
-            <p className="text-gray-500 mb-6">We pre-filled smart defaults. Adjust as needed.</p>
-
-            <div className="card p-4 mb-6">
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-500">Allocated</span>
-                <span className={`font-semibold ${unallocated < 0 ? "text-red-500" : "text-green-600"}`}>
-                  ₹{totalBudget.toLocaleString()} / ₹{incomeNum.toLocaleString()}
-                </span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    unallocated < 0 ? "bg-red-500" : "bg-green-500"
-                  }`}
-                  style={{ width: `${Math.min(100, (totalBudget / Math.max(1, incomeNum)) * 100)}%` }}
-                />
-              </div>
-              <p className="text-xs mt-1.5 text-gray-400">
-                {unallocated >= 0
-                  ? `₹${unallocated.toLocaleString()} unallocated (savings)`
-                  : `₹${Math.abs(unallocated).toLocaleString()} over budget!`}
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              {categoryBudgets.map((cat) => (
-                <div key={cat.name} className="card p-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{cat.icon}</span>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">{cat.name}</p>
-                    </div>
-                    <div className="relative w-28">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-                      <input
-                        type="number"
-                        value={cat.limit || ""}
-                        onChange={(e) => updateBudget(cat.name, e.target.value)}
-                        className="input-field pl-7 text-right text-sm font-semibold py-2"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
 
             <button
-              onClick={() => setStep(5)}
-              className="btn-primary w-full py-3.5 text-base mt-6"
+              onClick={moveToBudgetStep}
+              disabled={selectedCategories.length === 0}
+              className="btn-primary mt-8 w-full py-4 text-base"
             >
-              Continue
+              Continue with {selectedCategories.length} categories
             </button>
-          </div>
+          </section>
         )}
 
-        {/* STEP 5: Goals */}
-        {step === 5 && (
-          <div className="animate-fadeIn">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Savings Goals</h1>
-            <p className="text-gray-500 mb-8">What are you saving for?</p>
+        {step === 4 && (
+          <section className="card p-6 sm:p-8">
+            <p className="eyebrow">Step 4</p>
+            <h2 className="mt-2 text-3xl font-extrabold text-slate-900">Set budget per category</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              We prefilled smart defaults based on your profile. Adjust anything before you start.
+            </p>
 
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              {GOAL_PRESETS.map((preset) => {
-                const selected = goals.some((g) => g.title === preset.title);
+            <div className="card-soft mt-6 p-5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-slate-500">Budget allocated</span>
+                <span className="font-extrabold text-slate-900">{formatCurrency(totalBudget)}</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className={`h-full rounded-full ${overAllocated > 0 ? "bg-[#D93025]" : "bg-[#0F9D58]"}`}
+                  style={{ width: `${budgetSummary}%` }}
+                />
+              </div>
+              <div className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-bold ${budgetHealthTone}`}>
+                {overAllocated > 0
+                  ? `${formatCurrency(overAllocated)} over your income`
+                  : `${formatCurrency(unallocated)} stays free for saving or buffer`}
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              {categoryBudgets.map((category) => {
+                const meta = CATEGORIES.find((item) => item.name === category.name);
+                return (
+                  <div key={category.name} className="rounded-[22px] border border-slate-200 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl"
+                        style={{ backgroundColor: meta?.bgColor }}
+                      >
+                        {meta?.icon}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold text-slate-900">{category.name}</p>
+                        <p className="text-sm text-slate-500">Monthly cap for this category</p>
+                      </div>
+                      <div className="relative w-32">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
+                        <input
+                          type="number"
+                          value={category.limit || ""}
+                          onChange={(event) => updateBudget(category.name, event.target.value)}
+                          className="input-field pl-12 text-right font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button onClick={() => setStep(5)} className="btn-primary mt-8 w-full py-4 text-base">
+              Continue
+            </button>
+          </section>
+        )}
+
+        {step === 5 && (
+          <section className="card p-6 sm:p-8">
+            <p className="eyebrow">Step 5</p>
+            <h2 className="mt-2 text-3xl font-extrabold text-slate-900">Savings goals</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Add the goals you want to actively save toward this year.
+            </p>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {GOAL_PRESETS.map((goal) => {
+                const active = goals.some((item) => item.title === goal.title);
                 return (
                   <button
-                    key={preset.title}
-                    onClick={() => toggleGoal(preset)}
-                    className={`p-4 rounded-2xl border-2 text-left transition-all ${
-                      selected
-                        ? "border-indigo-500 bg-indigo-50"
-                        : "border-gray-100 bg-white hover:border-gray-200"
+                    key={goal.title}
+                    onClick={() => toggleGoal(goal.title, goal.icon)}
+                    className={`rounded-[22px] border p-4 text-left transition ${
+                      active
+                        ? "border-[#1A73E8] bg-[#E8F0FE]"
+                        : "border-slate-200 bg-white hover:border-slate-300"
                     }`}
                   >
-                    <span className="text-2xl">{preset.icon}</span>
-                    <p className="font-medium text-gray-900 mt-2 text-sm">{preset.title}</p>
+                    <div className="text-3xl">{goal.icon}</div>
+                    <p className="mt-4 text-base font-bold text-slate-900">{goal.title}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {active ? "Included in your plan" : "Tap to track this goal"}
+                    </p>
                   </button>
                 );
               })}
             </div>
 
             {goals.length > 0 && (
-              <div className="space-y-3 mb-6">
-                {goals.map((g) => (
-                  <div key={g.title} className="card p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span>{g.icon}</span>
-                      <span className="font-medium text-sm text-gray-900">{g.title}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
+              <div className="mt-6 space-y-4">
+                {goals.map((goal) => (
+                  <div key={goal.title} className="rounded-[22px] border border-slate-200 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{goal.icon}</span>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Target Amount</label>
+                        <p className="font-bold text-slate-900">{goal.title}</p>
+                        <p className="text-sm text-slate-500">Set target, saved amount, and timeline</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">Target amount</label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
                           <input
                             type="number"
-                            value={g.targetAmount}
-                            onChange={(e) => updateGoalField(g.title, "targetAmount", e.target.value)}
+                            value={goal.targetAmount}
+                            onChange={(event) => updateGoal(goal.title, "targetAmount", event.target.value)}
+                            className="input-field pl-12"
                             placeholder="200000"
-                            className="input-field pl-7 text-sm py-2"
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">By When</label>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">Already saved</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
+                          <input
+                            type="number"
+                            value={goal.savedAmount}
+                            onChange={(event) => updateGoal(goal.title, "savedAmount", event.target.value)}
+                            className="input-field pl-12"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">Deadline</label>
                         <input
                           type="month"
-                          value={g.deadline}
-                          onChange={(e) => updateGoalField(g.title, "deadline", e.target.value)}
-                          className="input-field text-sm py-2"
+                          value={goal.deadline}
+                          onChange={(event) => updateGoal(goal.title, "deadline", event.target.value)}
+                          className="input-field"
                         />
                       </div>
                     </div>
@@ -417,203 +496,222 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            <button
-              onClick={() => setStep(6)}
-              className="btn-primary w-full py-3.5 text-base"
-            >
+            <button onClick={() => setStep(6)} className="btn-primary mt-8 w-full py-4 text-base">
               {goals.length > 0 ? "Continue" : "Skip for now"}
             </button>
-          </div>
+          </section>
         )}
 
-        {/* STEP 6: Debts */}
         {step === 6 && (
-          <div className="animate-fadeIn">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Any Debts or Loans?</h1>
-            <p className="text-gray-500 mb-8">This is optional. Helps track your repayments.</p>
+          <section className="card p-6 sm:p-8">
+            <p className="eyebrow">Step 6</p>
+            <h2 className="mt-2 text-3xl font-extrabold text-slate-900">Any debts?</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Add loans or debt balances so LifeOS can track EMIs and payoff progress.
+            </p>
 
-            <div className="flex gap-3 mb-6">
+            <div className="mt-6 flex gap-3">
               <button
-                onClick={() => { setHasDebts(false); setDebts([]); }}
-                className={`flex-1 py-3 rounded-xl font-medium transition-all ${
-                  !hasDebts ? "bg-green-500 text-white" : "bg-white border border-gray-200 text-gray-700"
+                onClick={() => setDebts([])}
+                className={`flex-1 rounded-2xl border px-4 py-3 text-sm font-bold ${
+                  debts.length === 0
+                    ? "border-[#1A73E8] bg-[#E8F0FE] text-[#1A73E8]"
+                    : "border-slate-200 bg-white text-slate-600"
                 }`}
               >
-                No Debts
+                No debt right now
               </button>
               <button
-                onClick={() => { setHasDebts(true); if (debts.length === 0) addDebt(); }}
-                className={`flex-1 py-3 rounded-xl font-medium transition-all ${
-                  hasDebts ? "bg-red-500 text-white" : "bg-white border border-gray-200 text-gray-700"
+                onClick={() => {
+                  if (debts.length === 0) addDebt();
+                }}
+                className={`flex-1 rounded-2xl border px-4 py-3 text-sm font-bold ${
+                  debts.length > 0
+                    ? "border-[#1A73E8] bg-[#E8F0FE] text-[#1A73E8]"
+                    : "border-slate-200 bg-white text-slate-600"
                 }`}
               >
-                Yes, I have
+                Yes, add debt
               </button>
             </div>
 
-            {hasDebts && (
-              <div className="space-y-3 mb-6">
-                {debts.map((d, idx) => (
-                  <div key={idx} className="card p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-sm font-medium text-gray-900">Debt {idx + 1}</span>
-                      <button onClick={() => removeDebt(idx)} className="text-red-400 text-sm">Remove</button>
+            {debts.length > 0 && (
+              <div className="mt-6 space-y-4">
+                {debts.map((debt, index) => (
+                  <div key={`${index}-${debt.name}`} className="rounded-[22px] border border-slate-200 bg-white p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-900">Debt {index + 1}</p>
+                      <button
+                        onClick={() => removeDebt(index)}
+                        className="text-sm font-semibold text-[#D93025]"
+                      >
+                        Remove
+                      </button>
                     </div>
-                    <input
-                      type="text"
-                      value={d.name}
-                      onChange={(e) => updateDebt(idx, "name", e.target.value)}
-                      placeholder="e.g., Education Loan"
-                      className="input-field text-sm py-2 mb-2"
-                    />
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <input
+                        value={debt.name}
+                        onChange={(event) => updateDebt(index, "name", event.target.value)}
+                        placeholder="Education loan"
+                        className="input-field"
+                      />
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
                         <input
                           type="number"
-                          value={d.totalAmount}
-                          onChange={(e) => updateDebt(idx, "totalAmount", e.target.value)}
+                          value={debt.totalAmount}
+                          onChange={(event) => updateDebt(index, "totalAmount", event.target.value)}
                           placeholder="Total amount"
-                          className="input-field pl-7 text-sm py-2"
+                          className="input-field pl-12"
                         />
                       </div>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
                         <input
                           type="number"
-                          value={d.monthlyEMI}
-                          onChange={(e) => updateDebt(idx, "monthlyEMI", e.target.value)}
+                          value={debt.monthlyEMI}
+                          onChange={(event) => updateDebt(index, "monthlyEMI", event.target.value)}
                           placeholder="Monthly EMI"
-                          className="input-field pl-7 text-sm py-2"
+                          className="input-field pl-12"
+                        />
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
+                        <input
+                          type="number"
+                          value={debt.paidAmount}
+                          onChange={(event) => updateDebt(index, "paidAmount", event.target.value)}
+                          placeholder="Already paid"
+                          className="input-field pl-12"
                         />
                       </div>
                     </div>
                   </div>
                 ))}
-                <button
-                  onClick={addDebt}
-                  className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 font-medium"
-                >
-                  + Add Another Debt
+
+                <button onClick={addDebt} className="btn-secondary w-full py-3 text-sm">
+                  Add another debt
                 </button>
               </div>
             )}
 
-            <button
-              onClick={() => setStep(7)}
-              className="btn-primary w-full py-3.5 text-base"
-            >
+            <button onClick={() => setStep(7)} className="btn-primary mt-8 w-full py-4 text-base">
               Continue
             </button>
-          </div>
+          </section>
         )}
 
-        {/* STEP 7: Review */}
         {step === 7 && (
-          <div className="animate-fadeIn">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Review & Start</h1>
-            <p className="text-gray-500 mb-8">Here&apos;s your financial setup</p>
+          <section className="space-y-4">
+            <div className="card p-6 sm:p-8">
+              <p className="eyebrow">Step 7</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-900">Review and start</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                You can always update these later, but this gives you a strong finance baseline from day one.
+              </p>
+            </div>
 
-            <div className="card p-4 mb-3">
-              <div className="flex items-center justify-between">
+            <div className="card p-5">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide">Profile</p>
-                  <p className="font-semibold text-gray-900 mt-1">
-                    {OCCUPATIONS.find((o) => o.value === occupation)?.label}
+                  <p className="eyebrow">Profile</p>
+                  <p className="mt-2 text-xl font-extrabold text-slate-900">
+                    {selectedOccupation?.label || "Not selected"}
                   </p>
+                  <p className="mt-1 text-sm text-slate-500">Bank: {bank || "Not selected"}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-400">Income</p>
-                  <p className="font-bold text-lg text-gray-900">₹{incomeNum.toLocaleString()}</p>
+                <div className="rounded-2xl bg-[#E8F0FE] px-4 py-3 text-right">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#1A73E8]">Income</p>
+                  <p className="mt-1 text-xl font-extrabold text-slate-900">{formatCurrency(incomeValue)}</p>
                 </div>
-              </div>
-              {bank && <p className="text-sm text-gray-500 mt-2">Bank: {bank}</p>}
-            </div>
-
-            <div className="card p-4 mb-3">
-              <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Monthly Budget</p>
-              <div className="space-y-2">
-                {categoryBudgets.map((c) => (
-                  <div key={c.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{c.icon}</span>
-                      <span className="text-sm text-gray-700">{c.name}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-gray-900">₹{c.limit.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-gray-100 mt-3 pt-3 flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Total Allocated</span>
-                <span className="text-sm font-bold text-gray-900">₹{totalBudget.toLocaleString()}</span>
               </div>
             </div>
 
-            {goals.length > 0 && (
-              <div className="card p-4 mb-3">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Savings Goals</p>
-                {goals.map((g) => (
-                  <div key={g.title} className="flex items-center justify-between py-1.5">
-                    <div className="flex items-center gap-2">
-                      <span>{g.icon}</span>
-                      <span className="text-sm text-gray-700">{g.title}</span>
+            <div className="card p-5">
+              <div className="flex items-center justify-between">
+                <p className="eyebrow">Budget plan</p>
+                <span className="text-sm font-bold text-slate-900">{formatCurrency(totalBudget)}</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {categoryBudgets.map((category) => {
+                  const meta = CATEGORIES.find((item) => item.name === category.name);
+                  return (
+                    <div key={category.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                          style={{ backgroundColor: meta?.bgColor }}
+                        >
+                          {meta?.icon}
+                        </div>
+                        <span className="text-sm font-semibold text-slate-700">{category.name}</span>
+                      </div>
+                      <span className="text-sm font-bold text-slate-900">{formatCurrency(category.limit)}</span>
                     </div>
-                    {g.targetAmount && (
-                      <span className="text-sm font-semibold text-gray-900">
-                        ₹{parseInt(g.targetAmount).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
+              </div>
+              <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                {overAllocated > 0
+                  ? `${formatCurrency(overAllocated)} is over your income. Consider trimming a category before you start.`
+                  : `${formatCurrency(unallocated)} remains free for savings or surprise spends.`}
+              </div>
+            </div>
+
+            {reviewGoals.length > 0 && (
+              <div className="card p-5">
+                <p className="eyebrow">Goals</p>
+                <div className="mt-4 space-y-3">
+                  {reviewGoals.map((goal) => (
+                    <div key={goal.title} className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{goal.icon}</span>
+                        <div>
+                          <p className="font-bold text-slate-900">{goal.title}</p>
+                          <p className="text-sm text-slate-500">Deadline: {goal.deadline || "Flexible"}</p>
+                        </div>
+                      </div>
+                      <div className="text-right text-sm">
+                        <p className="font-bold text-slate-900">{formatCurrency(normalizeAmount(goal.targetAmount))}</p>
+                        <p className="text-slate-500">Saved: {formatCurrency(normalizeAmount(goal.savedAmount))}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            {debts.length > 0 && debts[0].name && (
-              <div className="card p-4 mb-6">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Debts</p>
-                {debts.filter((d) => d.name).map((d, i) => (
-                  <div key={i} className="flex items-center justify-between py-1.5">
-                    <span className="text-sm text-gray-700">{d.name}</span>
-                    <div className="text-right">
-                      <span className="text-sm font-semibold text-gray-900">
-                        ₹{parseInt(d.totalAmount || "0").toLocaleString()}
-                      </span>
-                      {d.monthlyEMI && (
-                        <p className="text-xs text-gray-400">EMI: ₹{parseInt(d.monthlyEMI).toLocaleString()}/mo</p>
-                      )}
+            {reviewDebts.length > 0 && (
+              <div className="card p-5">
+                <p className="eyebrow">Debts</p>
+                <div className="mt-4 space-y-3">
+                  {reviewDebts.map((debt) => (
+                    <div key={debt.name} className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                      <div>
+                        <p className="font-bold text-slate-900">{debt.name}</p>
+                        <p className="text-sm text-slate-500">EMI: {formatCurrency(normalizeAmount(debt.monthlyEMI))}</p>
+                      </div>
+                      <div className="text-right text-sm">
+                        <p className="font-bold text-slate-900">{formatCurrency(normalizeAmount(debt.totalAmount))}</p>
+                        <p className="text-slate-500">Paid: {formatCurrency(normalizeAmount(debt.paidAmount))}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
 
             <button
-              onClick={handleSubmit}
+              onClick={submitOnboarding}
               disabled={loading}
               className="btn-primary w-full py-4 text-base"
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Setting up...
-                </span>
-              ) : (
-                "Start Managing My Money"
-              )}
+              {loading ? "Saving your finance setup..." : "Start with LifeOS"}
             </button>
-          </div>
+          </section>
         )}
       </div>
-
-      <style jsx>{`
-        .animate-fadeIn {
-          animation: fadeIn 0.3s ease-out;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 }
+

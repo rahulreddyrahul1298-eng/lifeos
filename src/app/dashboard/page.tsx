@@ -1,150 +1,310 @@
-"use client";
-import { useState, useEffect, useCallback } from "react";
+﻿"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  formatCurrency,
-  getGreeting,
-  getCategoryIcon,
-  getCategoryColor,
-  getCategoryBgColor,
-  CATEGORIES,
-  autoCategorize,
-} from "@/lib/utils";
 import Toast from "@/components/ui/Toast";
+import {
+  CATEGORIES,
+  GOAL_PRESETS,
+  autoCategorize,
+  formatCurrency,
+  getCategoryBgColor,
+  getCategoryColor,
+  getCategoryIcon,
+  normalizeAmount,
+} from "@/lib/utils";
+
+type AlertItem = {
+  type: "warning" | "success" | "info" | "danger";
+  message: string;
+};
+
+type Transaction = {
+  id: string;
+  title: string;
+  amount: number;
+  category: string;
+  date: string;
+};
+
+type Goal = {
+  id: string;
+  title: string;
+  icon: string | null;
+  targetAmount: number | null;
+  savedAmount: number;
+  deadline: string | null;
+  completed: boolean;
+  progress: number;
+  remainingAmount: number | null;
+};
+
+type Debt = {
+  id: string;
+  name: string;
+  totalAmount: number;
+  paidAmount: number;
+  monthlyEMI: number;
+  remaining: number;
+  progress: number;
+};
+
+type CategoryDetail = {
+  category: string;
+  spent: number;
+  limit: number;
+  effectiveLimit: number;
+  percent: number;
+  exceeded: boolean;
+  remaining: number;
+  overBy: number;
+  transferredFromOther: number;
+};
 
 type DashboardData = {
-  user: { name: string; income: number; budget: number; isPremium: boolean; bank: string; occupation: string };
-  totalSpent: number;
-  todaySpent: number;
-  remaining: number;
-  incomeUsedPct: number;
-  dailyBudgetRemaining: number;
-  daysRemaining: number;
-  categoryDetails: {
-    category: string; spent: number; limit: number; percent: number;
-    exceeded: boolean; remaining: number; overBy: number;
-  }[];
+  user: {
+    id: string;
+    name: string | null;
+    income: number;
+    budget: number;
+    isPremium: boolean;
+    bank: string | null;
+    occupation: string | null;
+  };
+  overview: {
+    income: number;
+    totalSpent: number;
+    todaySpent: number;
+    remaining: number;
+    incomeUsedPct: number;
+    daysRemaining: number;
+    dailyBudgetRemaining: number;
+    totalGoalTarget: number;
+    totalGoalSaved: number;
+    totalDebt: number;
+    totalEMI: number;
+  };
+  categoryDetails: CategoryDetail[];
   categoryBreakdown: { category: string; total: number; percent: number }[];
-  recentExpenses: { id: string; title: string; amount: number; category: string; date: string }[];
-  goals: {
-    id: string; title: string; icon: string; targetAmount: number;
-    savedAmount: number; deadline: string; completed: boolean; progress: number;
-  }[];
-  debts: {
-    id: string; name: string; totalAmount: number; paidAmount: number;
-    monthlyEMI: number; remaining: number; progress: number;
-  }[];
-  totalDebt: number;
-  totalEMI: number;
-  alerts: { type: string; message: string }[];
-  predictions: { projectedMonthEnd: number; projectedSavings: number; avgDailySpend: number } | null;
+  spendingByDay: { date: string; total: number }[];
+  transactions: Transaction[];
+  recentExpenses: Transaction[];
+  goals: Goal[];
+  debts: Debt[];
+  alerts: AlertItem[];
+  premium: {
+    projectedMonthEnd: number;
+    projectedSavings: number;
+    avgDailySpend: number;
+  } | null;
 };
+
+const tabs = [
+  { key: "home", label: "Home", icon: "??" },
+  { key: "transactions", label: "Transactions", icon: "??" },
+  { key: "goals", label: "Goals", icon: "??" },
+] as const;
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [tab, setTab] = useState<(typeof tabs)[number]["key"]>("home");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"home" | "transactions" | "goals">("home");
   const [toast, setToast] = useState<{ icon: string; message: string } | null>(null);
 
-  // Expense form
-  const [showAddExpense, setShowAddExpense] = useState(false);
-  const [expTitle, setExpTitle] = useState("");
-  const [expAmount, setExpAmount] = useState("");
-  const [expCategory, setExpCategory] = useState("");
-  const [expSubmitting, setExpSubmitting] = useState(false);
+  const [showExpenseSheet, setShowExpenseSheet] = useState(false);
+  const [expenseTitle, setExpenseTitle] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseCategory, setExpenseCategory] = useState("");
+  const [expenseDate, setExpenseDate] = useState("");
+  const [expenseSaving, setExpenseSaving] = useState(false);
+  const [transactionFilter, setTransactionFilter] = useState("All");
 
-  // Goal fund form
-  const [addingFundGoalId, setAddingFundGoalId] = useState<string | null>(null);
-  const [fundAmount, setFundAmount] = useState("");
+  const [goalContribution, setGoalContribution] = useState<Record<string, string>>({});
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [newGoalTitle, setNewGoalTitle] = useState("");
+  const [newGoalIcon, setNewGoalIcon] = useState("??");
+  const [newGoalTarget, setNewGoalTarget] = useState("");
+  const [newGoalSaved, setNewGoalSaved] = useState("");
+  const [newGoalDeadline, setNewGoalDeadline] = useState("");
 
-  // Transaction filter
-  const [txFilter, setTxFilter] = useState("All");
+  const [showDebtForm, setShowDebtForm] = useState(false);
+  const [debtName, setDebtName] = useState("");
+  const [debtAmount, setDebtAmount] = useState("");
+  const [debtEmi, setDebtEmi] = useState("");
+  const [debtPaid, setDebtPaid] = useState("");
 
-  // All expenses for transactions tab
-  const [allExpenses, setAllExpenses] = useState<DashboardData["recentExpenses"]>([]);
-
-  const fetchData = useCallback(async () => {
+  const fetchDashboard = useCallback(async () => {
     try {
-      const res = await fetch("/api/dashboard");
-      if (res.status === 401) { router.push("/auth"); return; }
-      const json = await res.json();
+      const response = await fetch("/api/dashboard", { cache: "no-store" });
+      if (response.status === 401) {
+        router.push("/auth");
+        return;
+      }
+
+      const json = (await response.json()) as DashboardData;
       setData(json);
-    } catch {
+    } catch (error) {
+      console.error(error);
       router.push("/auth");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [router]);
 
-  const fetchExpenses = useCallback(async () => {
-    const params = txFilter !== "All" ? `?category=${encodeURIComponent(txFilter)}` : "";
-    const res = await fetch(`/api/expenses${params}`);
-    if (res.ok) {
-      const json = await res.json();
-      setAllExpenses(json.expenses);
-    }
-  }, [txFilter]);
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { if (tab === "transactions") fetchExpenses(); }, [tab, txFilter, fetchExpenses]);
+  const filteredTransactions = useMemo(() => {
+    if (!data) return [];
+    if (transactionFilter === "All") return data.transactions;
+    return data.transactions.filter((transaction) => transaction.category === transactionFilter);
+  }, [data, transactionFilter]);
+
+  function onExpenseTitleChange(value: string) {
+    setExpenseTitle(value);
+    if (!expenseCategory) {
+      const suggestion = autoCategorize(value);
+      if (suggestion !== "Other") setExpenseCategory(suggestion);
+    }
+  }
 
   async function addExpense() {
-    if (!expTitle || !expAmount) return;
-    setExpSubmitting(true);
-    const suggestedCat = expCategory || autoCategorize(expTitle);
-    const res = await fetch("/api/expenses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: expTitle, amount: expAmount, category: suggestedCat }),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.alert?.type === "exceeded") {
-        setToast({ icon: "🔴", message: `${json.alert.category} budget exceeded by ₹${json.alert.overBy}` });
-      } else if (json.alert?.type === "warning") {
-        setToast({ icon: "⚠️", message: `${json.alert.category} budget ${json.alert.pct}% used` });
-      } else {
-        setToast({ icon: "✅", message: "Expense added" });
+    if (!expenseTitle || normalizeAmount(expenseAmount) <= 0) return;
+    setExpenseSaving(true);
+    try {
+      const response = await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: expenseTitle,
+          amount: normalizeAmount(expenseAmount),
+          category: expenseCategory || autoCategorize(expenseTitle),
+          date: expenseDate || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        const json = await response.json();
+        if (json.alert?.type === "exceeded") {
+          setToast({
+            icon: "??",
+            message:
+              json.alert.transferredFromOther > 0
+                ? `${json.alert.category} exceeded. Moved Rs ${json.alert.transferredFromOther} from Other.`
+                : `${json.alert.category} exceeded by Rs ${json.alert.overBy}.`,
+          });
+        } else if (json.alert?.type === "warning") {
+          setToast({ icon: "??", message: `${json.alert.category} is at ${json.alert.pct}% of budget.` });
+        } else {
+          setToast({ icon: "?", message: `Expense saved under ${json.suggestedCategory}.` });
+        }
+
+        setExpenseTitle("");
+        setExpenseAmount("");
+        setExpenseCategory("");
+        setExpenseDate("");
+        setShowExpenseSheet(false);
+        fetchDashboard();
       }
-      setExpTitle(""); setExpAmount(""); setExpCategory(""); setShowAddExpense(false);
-      fetchData();
-      if (tab === "transactions") fetchExpenses();
+    } finally {
+      setExpenseSaving(false);
     }
-    setExpSubmitting(false);
   }
 
   async function deleteExpense(id: string) {
     await fetch(`/api/expenses?id=${id}`, { method: "DELETE" });
-    fetchData();
-    if (tab === "transactions") fetchExpenses();
+    setToast({ icon: "???", message: "Transaction removed." });
+    fetchDashboard();
   }
 
-  async function addFundToGoal(goalId: string) {
-    if (!fundAmount) return;
-    const goal = data?.goals.find((g) => g.id === goalId);
-    if (!goal) return;
-    const newSaved = goal.savedAmount + parseFloat(fundAmount);
-    await fetch("/api/goals", {
+  async function addMoneyToGoal(goal: Goal) {
+    const amount = normalizeAmount(goalContribution[goal.id]);
+    if (amount <= 0) return;
+
+    const response = await fetch("/api/goals", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: goalId, savedAmount: newSaved }),
+      body: JSON.stringify({ id: goal.id, savedAmount: goal.savedAmount + amount }),
     });
-    setFundAmount(""); setAddingFundGoalId(null);
-    setToast({ icon: "💰", message: `Added ₹${parseInt(fundAmount).toLocaleString()} to goal` });
-    fetchData();
+
+    if (response.ok) {
+      setGoalContribution((current) => ({ ...current, [goal.id]: "" }));
+      setToast({ icon: "??", message: `${formatCurrency(amount)} added to ${goal.title}.` });
+      fetchDashboard();
+    }
   }
 
-  async function payDebt(debtId: string, amount: number) {
-    const debt = data?.debts.find((d) => d.id === debtId);
-    if (!debt) return;
-    const newPaid = debt.paidAmount + amount;
-    await fetch("/api/debts", {
+  async function createGoal() {
+    if (!newGoalTitle || normalizeAmount(newGoalTarget) <= 0) return;
+
+    const response = await fetch("/api/goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: newGoalTitle,
+        icon: newGoalIcon,
+        targetAmount: normalizeAmount(newGoalTarget),
+        savedAmount: normalizeAmount(newGoalSaved),
+        deadline: newGoalDeadline || null,
+      }),
+    });
+
+    if (response.ok) {
+      setToast({ icon: "??", message: `${newGoalTitle} goal created.` });
+      setShowGoalForm(false);
+      setNewGoalTitle("");
+      setNewGoalIcon("??");
+      setNewGoalTarget("");
+      setNewGoalSaved("");
+      setNewGoalDeadline("");
+      fetchDashboard();
+    }
+  }
+
+  async function createDebt() {
+    if (!debtName || normalizeAmount(debtAmount) <= 0) return;
+
+    const response = await fetch("/api/debts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: debtName,
+        totalAmount: normalizeAmount(debtAmount),
+        monthlyEMI: normalizeAmount(debtEmi),
+        paidAmount: normalizeAmount(debtPaid),
+      }),
+    });
+
+    if (response.ok) {
+      setToast({ icon: "??", message: `${debtName} added to debt tracking.` });
+      setShowDebtForm(false);
+      setDebtName("");
+      setDebtAmount("");
+      setDebtEmi("");
+      setDebtPaid("");
+      fetchDashboard();
+    }
+  }
+
+  async function payDebt(debt: Debt, amount?: number) {
+    const payment = amount ?? debt.monthlyEMI;
+    if (payment <= 0) return;
+
+    const response = await fetch("/api/debts", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: debtId, paidAmount: newPaid }),
+      body: JSON.stringify({
+        id: debt.id,
+        paidAmount: Math.min(debt.totalAmount, debt.paidAmount + payment),
+      }),
     });
-    setToast({ icon: "✅", message: `Paid ₹${amount.toLocaleString()} on ${debt.name}` });
-    fetchData();
+
+    if (response.ok) {
+      setToast({ icon: "?", message: `${formatCurrency(payment)} marked as paid on ${debt.name}.` });
+      fetchDashboard();
+    }
   }
 
   async function logout() {
@@ -152,540 +312,802 @@ export default function DashboardPage() {
     router.push("/");
   }
 
-  // Auto-suggest category while typing title
-  function handleTitleChange(val: string) {
-    setExpTitle(val);
-    if (!expCategory && val.length > 2) {
-      const suggested = autoCategorize(val);
-      if (suggested !== "Other") setExpCategory(suggested);
-    }
+  if (loading) {
+    return <LoadingState />;
   }
 
-  if (loading) return <LoadingSkeleton />;
   if (!data) return null;
 
-  const { user } = data;
-  const spentPct = user.income > 0 ? Math.min(100, (data.totalSpent / user.income) * 100) : 0;
-
   return (
-    <div className="min-h-screen bg-[#FAFBFC] pb-24">
-      {toast && <Toast icon={toast.icon} message={toast.message} onClose={() => setToast(null)} />}
+    <div className="min-h-screen bg-[#FAFBFC] pb-28">
+      {toast ? <Toast icon={toast.icon} message={toast.message} onClose={() => setToast(null)} /> : null}
 
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-5 py-4">
-        <div className="max-w-lg mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/92 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-4">
           <div>
-            <p className="text-sm text-gray-500">{getGreeting()}</p>
-            <h1 className="text-lg font-bold text-gray-900">{user.name || "User"}</h1>
+            <p className="eyebrow">LifeOS</p>
+            <h1 className="mt-1 text-xl font-extrabold text-slate-900">
+              {data.user.name ? `${data.user.name}'s money hub` : "Your money hub"}
+            </h1>
           </div>
           <div className="flex items-center gap-3">
-            {user.isPremium ? (
-              <span className="badge-pro">PRO</span>
+            {data.user.bank ? (
+              <div className="rounded-full bg-[#E8F0FE] px-4 py-2 text-sm font-bold text-[#1A73E8]">
+                {data.user.bank}
+              </div>
+            ) : null}
+            {data.user.isPremium ? (
+              <span className="badge-pro">PREMIUM</span>
             ) : (
-              <button onClick={() => router.push("/pricing")} className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">
+              <button onClick={() => router.push("/pricing")} className="btn-secondary px-4 py-2 text-sm">
                 Upgrade
               </button>
             )}
-            <button onClick={logout} className="text-gray-400 text-sm">Logout</button>
+            <button onClick={logout} className="text-sm font-semibold text-slate-500">
+              Logout
+            </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-lg mx-auto px-5 pt-5">
-        {/* ===== HOME TAB ===== */}
-        {tab === "home" && (
-          <>
-            {/* Money Overview */}
-            <div className="card p-5 mb-4">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide">Monthly Income</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(user.income)}</p>
-                </div>
-                {user.bank && (
-                  <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg">
-                    {user.bank}
-                  </span>
-                )}
+      <main className="mx-auto w-full max-w-6xl px-5 py-6">
+        {tab === "home" ? <HomeTab data={data} onOpenTransactions={() => setTab("transactions")} onOpenGoals={() => setTab("goals")} onAddExpense={() => setShowExpenseSheet(true)} /> : null}
+        {tab === "transactions" ? (
+          <TransactionsTab
+            filter={transactionFilter}
+            setFilter={setTransactionFilter}
+            transactions={filteredTransactions}
+            onDelete={deleteExpense}
+            onAddExpense={() => setShowExpenseSheet(true)}
+          />
+        ) : null}
+        {tab === "goals" ? (
+          <GoalsTab
+            data={data}
+            contribution={goalContribution}
+            setContribution={setGoalContribution}
+            onAddMoney={addMoneyToGoal}
+            onPayDebt={payDebt}
+            showGoalForm={showGoalForm}
+            setShowGoalForm={setShowGoalForm}
+            newGoalTitle={newGoalTitle}
+            setNewGoalTitle={setNewGoalTitle}
+            newGoalIcon={newGoalIcon}
+            setNewGoalIcon={setNewGoalIcon}
+            newGoalTarget={newGoalTarget}
+            setNewGoalTarget={setNewGoalTarget}
+            newGoalSaved={newGoalSaved}
+            setNewGoalSaved={setNewGoalSaved}
+            newGoalDeadline={newGoalDeadline}
+            setNewGoalDeadline={setNewGoalDeadline}
+            createGoal={createGoal}
+            showDebtForm={showDebtForm}
+            setShowDebtForm={setShowDebtForm}
+            debtName={debtName}
+            setDebtName={setDebtName}
+            debtAmount={debtAmount}
+            setDebtAmount={setDebtAmount}
+            debtEmi={debtEmi}
+            setDebtEmi={setDebtEmi}
+            debtPaid={debtPaid}
+            setDebtPaid={setDebtPaid}
+            createDebt={createDebt}
+          />
+        ) : null}
+      </main>
+
+      {showExpenseSheet ? (
+        <div className="fixed inset-0 z-40 flex items-end bg-slate-950/35 p-0 sm:items-center sm:justify-center sm:p-4">
+          <div className="w-full rounded-t-[28px] bg-white p-6 sm:max-w-xl sm:rounded-[28px]">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Add expense</p>
+                <h3 className="mt-1 text-2xl font-extrabold text-slate-900">Track a transaction</h3>
               </div>
+              <button onClick={() => setShowExpenseSheet(false)} className="text-2xl text-slate-400">
+                ×
+              </button>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="bg-red-50 rounded-xl p-3">
-                  <p className="text-xs text-red-400">Spent</p>
-                  <p className="text-lg font-bold text-red-600">{formatCurrency(data.totalSpent)}</p>
-                </div>
-                <div className="bg-green-50 rounded-xl p-3">
-                  <p className="text-xs text-green-400">Remaining</p>
-                  <p className="text-lg font-bold text-green-600">{formatCurrency(Math.max(0, data.remaining))}</p>
-                </div>
-              </div>
-
-              <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    spentPct > 90 ? "bg-red-500" : spentPct > 70 ? "bg-amber-500" : "bg-green-500"
-                  }`}
-                  style={{ width: `${spentPct}%` }}
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Merchant or note</label>
+                <input
+                  value={expenseTitle}
+                  onChange={(event) => onExpenseTitleChange(event.target.value)}
+                  placeholder="Swiggy, Uber, Amazon..."
+                  className="input-field"
                 />
               </div>
-              <p className="text-xs text-gray-400 mt-2">
-                {data.incomeUsedPct}% of income used &middot; {data.daysRemaining} days left
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
+                    <input
+                      type="number"
+                      value={expenseAmount}
+                      onChange={(event) => setExpenseAmount(event.target.value)}
+                      placeholder="0"
+                      className="input-field pl-12"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Date</label>
+                  <input
+                    type="date"
+                    value={expenseDate}
+                    onChange={(event) => setExpenseDate(event.target.value)}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Category</label>
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIES.map((category) => (
+                    <button
+                      key={category.name}
+                      onClick={() => setExpenseCategory(category.name)}
+                      className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                        expenseCategory === category.name
+                          ? "text-white"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                      style={expenseCategory === category.name ? { backgroundColor: category.color } : undefined}
+                    >
+                      {category.icon} {category.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button onClick={addExpense} disabled={expenseSaving} className="btn-primary mt-6 w-full py-4 text-base">
+              {expenseSaving ? "Saving transaction..." : "Save expense"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <nav className="fixed bottom-0 left-0 right-0 z-20 border-t border-slate-200/80 bg-white/96 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-3xl px-2 py-2">
+          {tabs.map((item) => {
+            const active = tab === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => setTab(item.key)}
+                className={`flex-1 rounded-2xl px-4 py-3 text-center text-sm font-bold transition ${
+                  active ? "bg-[#E8F0FE] text-[#1A73E8]" : "text-slate-500"
+                }`}
+              >
+                <div className="text-lg">{item.icon}</div>
+                <div className="mt-1">{item.label}</div>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+function HomeTab({
+  data,
+  onOpenTransactions,
+  onOpenGoals,
+  onAddExpense,
+}: {
+  data: DashboardData;
+  onOpenTransactions: () => void;
+  onOpenGoals: () => void;
+  onAddExpense: () => void;
+}) {
+  return (
+    <section className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[1.5fr,1fr]">
+        <div className="card overflow-hidden p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="eyebrow">Income overview</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-900">{formatCurrency(data.overview.income)}</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                {data.overview.incomeUsedPct}% of your income has been used this month.
               </p>
             </div>
-
-            {/* Category Budgets Grid */}
-            {data.categoryDetails.length > 0 && (
-              <div className="mb-4">
-                <h2 className="text-sm font-semibold text-gray-900 mb-3">Budget Categories</h2>
-                <div className="grid grid-cols-2 gap-3">
-                  {data.categoryDetails.map((cat) => (
-                    <div key={cat.category} className="card p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
-                          style={{ backgroundColor: getCategoryBgColor(cat.category) }}
-                        >
-                          {getCategoryIcon(cat.category)}
-                        </div>
-                        <span className="text-xs font-medium text-gray-700 truncate">{cat.category}</span>
-                      </div>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-sm font-bold text-gray-900">₹{Math.round(cat.spent).toLocaleString()}</span>
-                        <span className="text-xs text-gray-400">/ ₹{cat.limit.toLocaleString()}</span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.min(100, cat.percent)}%`,
-                            backgroundColor: cat.exceeded ? "#EF4444" : cat.percent > 80 ? "#F59E0B" : getCategoryColor(cat.category),
-                          }}
-                        />
-                      </div>
-                      {cat.exceeded && (
-                        <p className="text-xs text-red-500 font-medium mt-1">Over by ₹{Math.round(cat.overBy).toLocaleString()}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Recent Transactions */}
-            {data.recentExpenses.length > 0 && (
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-sm font-semibold text-gray-900">Recent Transactions</h2>
-                  <button onClick={() => setTab("transactions")} className="text-xs text-indigo-600 font-medium">
-                    View All
-                  </button>
-                </div>
-                <div className="card divide-y divide-gray-50">
-                  {data.recentExpenses.slice(0, 5).map((exp) => (
-                    <div key={exp.id} className="flex items-center gap-3 p-3.5">
-                      <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center text-sm shrink-0"
-                        style={{ backgroundColor: getCategoryBgColor(exp.category) }}
-                      >
-                        {getCategoryIcon(exp.category)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{exp.title}</p>
-                        <p className="text-xs text-gray-400">{exp.category} &middot; {exp.date}</p>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-900">-₹{exp.amount.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Savings Goals Preview */}
-            {data.goals.length > 0 && (
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-sm font-semibold text-gray-900">Savings Goals</h2>
-                  <button onClick={() => setTab("goals")} className="text-xs text-indigo-600 font-medium">
-                    View All
-                  </button>
-                </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 -mx-5 px-5">
-                  {data.goals.map((goal) => (
-                    <div key={goal.id} className="card p-4 min-w-[180px] shrink-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-lg">{goal.icon || "🎯"}</span>
-                        <span className="text-xs font-medium text-gray-700 truncate">{goal.title}</span>
-                      </div>
-                      {goal.targetAmount ? (
-                        <>
-                          <p className="text-sm font-bold text-gray-900">
-                            ₹{goal.savedAmount.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ ₹{goal.targetAmount.toLocaleString()}</span>
-                          </p>
-                          <div className="h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
-                            <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${goal.progress}%` }} />
-                          </div>
-                        </>
-                      ) : (
-                        <p className="text-xs text-gray-400">No target set</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Alerts */}
-            {data.alerts.length > 0 && (
-              <div className="mb-4">
-                <h2 className="text-sm font-semibold text-gray-900 mb-3">Alerts</h2>
-                <div className="space-y-2">
-                  {data.alerts.map((alert, i) => (
-                    <div
-                      key={i}
-                      className={`p-3.5 rounded-xl text-sm ${
-                        alert.type === "danger" ? "bg-red-50 text-red-700" :
-                        alert.type === "warning" ? "bg-amber-50 text-amber-700" :
-                        alert.type === "success" ? "bg-green-50 text-green-700" :
-                        "bg-blue-50 text-blue-700"
-                      }`}
-                    >
-                      {alert.message}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Quick Add Expense */}
-            <button
-              onClick={() => setShowAddExpense(true)}
-              className="btn-primary w-full py-3.5 text-base"
-            >
-              + Add Expense
+            <button onClick={onAddExpense} className="btn-primary px-5 py-3 text-sm">
+              Add expense
             </button>
-          </>
-        )}
+          </div>
 
-        {/* ===== TRANSACTIONS TAB ===== */}
-        {tab === "transactions" && (
-          <>
-            {/* Filter */}
-            <div className="flex gap-2 overflow-x-auto pb-3 -mx-5 px-5 mb-4">
-              {["All", ...CATEGORIES.map((c) => c.name)].map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setTxFilter(cat)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
-                    txFilter === cat
-                      ? "bg-gray-900 text-white"
-                      : "bg-white border border-gray-100 text-gray-600"
-                  }`}
-                >
-                  {cat === "All" ? "All" : `${getCategoryIcon(cat)} ${cat}`}
-                </button>
-              ))}
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <MetricCard label="Spent" value={formatCurrency(data.overview.totalSpent)} tone="red" />
+            <MetricCard label="Remaining" value={formatCurrency(Math.max(0, data.overview.remaining))} tone="green" />
+            <MetricCard label="Today" value={formatCurrency(data.overview.todaySpent)} tone="blue" />
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between text-sm font-semibold text-slate-500">
+              <span>Monthly progress</span>
+              <span>{data.overview.daysRemaining} days left</span>
             </div>
-
-            {/* Expense List */}
-            {allExpenses.length > 0 ? (
-              <div className="card divide-y divide-gray-50 mb-4">
-                {allExpenses.map((exp) => (
-                  <div key={exp.id} className="flex items-center gap-3 p-3.5">
-                    <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center text-sm shrink-0"
-                      style={{ backgroundColor: getCategoryBgColor(exp.category) }}
-                    >
-                      {getCategoryIcon(exp.category)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{exp.title}</p>
-                      <p className="text-xs text-gray-400">{exp.category} &middot; {exp.date}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-sm font-semibold text-gray-900">-₹{exp.amount.toLocaleString()}</span>
-                      <button onClick={() => deleteExpense(exp.id)} className="block text-xs text-red-400 mt-0.5">Delete</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="card p-8 text-center mb-4">
-                <p className="text-gray-400 text-sm">No transactions{txFilter !== "All" ? ` in ${txFilter}` : ""} this month</p>
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowAddExpense(true)}
-              className="btn-primary w-full py-3.5 text-base"
-            >
-              + Add Expense
-            </button>
-          </>
-        )}
-
-        {/* ===== GOALS TAB ===== */}
-        {tab === "goals" && (
-          <>
-            {/* Savings Goals */}
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">Savings Goals</h2>
-            {data.goals.length > 0 ? (
-              <div className="space-y-3 mb-6">
-                {data.goals.map((goal) => (
-                  <div key={goal.id} className="card p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="text-2xl">{goal.icon || "🎯"}</span>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">{goal.title}</p>
-                        {goal.deadline && (
-                          <p className="text-xs text-gray-400">Target: {goal.deadline}</p>
-                        )}
-                      </div>
-                    </div>
-                    {goal.targetAmount ? (
-                      <>
-                        <div className="flex justify-between text-sm mb-2">
-                          <span className="text-gray-500">Saved</span>
-                          <span className="font-bold text-gray-900">
-                            ₹{goal.savedAmount.toLocaleString()} / ₹{goal.targetAmount.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden mb-3">
-                          <div
-                            className="h-full bg-indigo-500 rounded-full transition-all"
-                            style={{ width: `${goal.progress}%` }}
-                          />
-                        </div>
-                        <p className="text-xs text-gray-400 mb-3">{goal.progress}% complete</p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-gray-400 mb-3">No target amount set</p>
-                    )}
-                    {addingFundGoalId === goal.id ? (
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-                          <input
-                            type="number"
-                            value={fundAmount}
-                            onChange={(e) => setFundAmount(e.target.value)}
-                            placeholder="Amount"
-                            className="input-field pl-7 text-sm py-2"
-                            autoFocus
-                          />
-                        </div>
-                        <button
-                          onClick={() => addFundToGoal(goal.id)}
-                          className="bg-indigo-500 text-white px-4 rounded-xl text-sm font-medium"
-                        >
-                          Add
-                        </button>
-                        <button
-                          onClick={() => { setAddingFundGoalId(null); setFundAmount(""); }}
-                          className="text-gray-400 px-2 text-sm"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setAddingFundGoalId(goal.id)}
-                        className="w-full py-2 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-medium"
-                      >
-                        + Add Money
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="card p-8 text-center mb-6">
-                <p className="text-gray-400 text-sm">No savings goals yet</p>
-              </div>
-            )}
-
-            {/* Debts */}
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">Debt Tracking</h2>
-            {data.debts.length > 0 ? (
-              <>
-                {/* Debt Summary */}
-                <div className="card p-4 mb-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs text-gray-400">Total Debt Left</p>
-                      <p className="text-lg font-bold text-red-600">₹{data.totalDebt.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400">Monthly EMI</p>
-                      <p className="text-lg font-bold text-gray-900">₹{data.totalEMI.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 mb-6">
-                  {data.debts.map((debt) => (
-                    <div key={debt.id} className="card p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-semibold text-gray-900">{debt.name}</p>
-                        <p className="text-xs text-gray-400">EMI: ₹{debt.monthlyEMI.toLocaleString()}/mo</p>
-                      </div>
-                      <div className="flex justify-between text-sm mb-2">
-                        <span className="text-gray-500">Paid</span>
-                        <span className="font-bold text-gray-900">
-                          ₹{debt.paidAmount.toLocaleString()} / ₹{debt.totalAmount.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
-                        <div
-                          className="h-full bg-green-500 rounded-full"
-                          style={{ width: `${debt.progress}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <p className="text-xs text-gray-400">₹{debt.remaining.toLocaleString()} remaining</p>
-                        <button
-                          onClick={() => payDebt(debt.id, debt.monthlyEMI)}
-                          className="text-xs bg-green-50 text-green-600 px-3 py-1.5 rounded-lg font-medium"
-                        >
-                          Pay EMI (₹{debt.monthlyEMI.toLocaleString()})
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="card p-8 text-center">
-                <p className="text-gray-400 text-sm">No debts tracked</p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Add Expense Modal */}
-      {showAddExpense && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-          <div className="bg-white w-full max-w-lg mx-auto rounded-t-3xl p-6 animate-slideUp">
-            <div className="flex justify-between items-center mb-5">
-              <h3 className="text-lg font-bold text-gray-900">Add Expense</h3>
-              <button onClick={() => setShowAddExpense(false)} className="text-gray-400 text-2xl leading-none">&times;</button>
-            </div>
-
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">What did you spend on?</label>
-              <input
-                type="text"
-                value={expTitle}
-                onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="e.g., Swiggy, Uber, Amazon"
-                className="input-field"
-                autoFocus
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className={`h-full rounded-full ${
+                  data.overview.incomeUsedPct >= 90
+                    ? "bg-[#D93025]"
+                    : data.overview.incomeUsedPct >= 70
+                      ? "bg-[#F29900]"
+                      : "bg-[#0F9D58]"
+                }`}
+                style={{ width: `${Math.min(100, data.overview.incomeUsedPct)}%` }}
               />
             </div>
+            <p className="mt-3 text-sm text-slate-500">
+              Safe daily spend left: {formatCurrency(data.overview.dailyBudgetRemaining)}
+            </p>
+          </div>
+        </div>
 
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Amount</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">₹</span>
-                <input
-                  type="number"
-                  value={expAmount}
-                  onChange={(e) => setExpAmount(e.target.value)}
-                  placeholder="0"
-                  className="input-field pl-8 text-lg font-semibold"
+        <div className="card p-6">
+          <p className="eyebrow">This month</p>
+          <div className="mt-4 space-y-4">
+            <MiniMetric label="Goal savings" value={formatCurrency(data.overview.totalGoalSaved)} helper={`${formatCurrency(data.overview.totalGoalTarget)} target`} />
+            <MiniMetric label="Debt left" value={formatCurrency(data.overview.totalDebt)} helper={`${formatCurrency(data.overview.totalEMI)} in monthly EMIs`} />
+            <MiniMetric label="Top category" value={data.categoryBreakdown[0]?.category || "No spending yet"} helper={data.categoryBreakdown[0] ? formatCurrency(data.categoryBreakdown[0].total) : "Add your first expense"} />
+            {data.premium ? (
+              <MiniMetric label="Premium forecast" value={formatCurrency(data.premium.projectedSavings)} helper="Projected month-end savings" />
+            ) : (
+              <div className="rounded-[22px] bg-[#E8F0FE] p-4 text-sm text-[#1A73E8]">
+                Upgrade to keep the premium forecasts and smart projections.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-xl font-extrabold text-slate-900">Category budgets</h3>
+          <span className="text-sm font-semibold text-slate-500">Envelope view</span>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {data.categoryDetails.map((category) => (
+            <div key={category.category} className="card p-5">
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl"
+                  style={{ backgroundColor: getCategoryBgColor(category.category) }}
+                >
+                  {getCategoryIcon(category.category)}
+                </div>
+                <div>
+                  <p className="font-bold text-slate-900">{category.category}</p>
+                  <p className="text-sm text-slate-500">{formatCurrency(category.spent)} spent</p>
+                </div>
+              </div>
+              <div className="mt-4 flex items-end justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">Budget</p>
+                  <p className="text-xl font-extrabold text-slate-900">{formatCurrency(category.effectiveLimit || category.limit)}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${category.exceeded ? "bg-[#FDECEC] text-[#D93025]" : category.percent >= 90 ? "bg-[#FFF3E0] text-[#F29900]" : "bg-[#E9F7EF] text-[#0F9D58]"}`}>
+                  {category.exceeded ? `Over by ${formatCurrency(category.overBy)}` : `${category.percent}% used`}
+                </span>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${Math.min(100, category.percent)}%`,
+                    backgroundColor: category.exceeded
+                      ? "#D93025"
+                      : category.percent >= 90
+                        ? "#F29900"
+                        : getCategoryColor(category.category),
+                  }}
                 />
               </div>
+              <p className="mt-3 text-sm text-slate-500">
+                {category.transferredFromOther > 0
+                  ? `${formatCurrency(category.transferredFromOther)} moved from Other to keep this covered.`
+                  : `${formatCurrency(Math.max(0, category.remaining))} left in this category.`}
+              </p>
             </div>
+          ))}
+        </div>
+      </div>
 
-            <div className="mb-6">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Category</label>
-              <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.name}
-                    onClick={() => setExpCategory(cat.name)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      expCategory === cat.name
-                        ? "text-white"
-                        : "bg-gray-50 text-gray-600"
-                    }`}
-                    style={expCategory === cat.name ? { backgroundColor: cat.color } : {}}
-                  >
-                    {cat.icon} {cat.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              onClick={addExpense}
-              disabled={!expTitle || !expAmount || expSubmitting}
-              className="btn-primary w-full py-3.5 text-base disabled:opacity-40"
-            >
-              {expSubmitting ? "Adding..." : "Add Expense"}
+      <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-xl font-extrabold text-slate-900">Recent transactions</h3>
+            <button onClick={onOpenTransactions} className="text-sm font-semibold text-[#1A73E8]">
+              View all
             </button>
           </div>
+          <div className="card overflow-hidden">
+            {data.recentExpenses.length > 0 ? (
+              data.recentExpenses.map((transaction) => (
+                <TransactionRow key={transaction.id} transaction={transaction} compact />
+              ))
+            ) : (
+              <EmptyState title="No transactions yet" body="Add your first expense to start tracking your month." />
+            )}
+          </div>
         </div>
-      )}
 
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 safe-bottom">
-        <div className="max-w-lg mx-auto flex">
-          {[
-            { key: "home" as const, label: "Home", icon: "🏠" },
-            { key: "transactions" as const, label: "Transactions", icon: "💳" },
-            { key: "goals" as const, label: "Goals", icon: "🎯" },
-          ].map((t) => (
+        <div className="space-y-6">
+          <div>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-extrabold text-slate-900">Savings goals</h3>
+              <button onClick={onOpenGoals} className="text-sm font-semibold text-[#1A73E8]">
+                Open goals
+              </button>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-1">
+              {data.goals.length > 0 ? (
+                data.goals.map((goal) => (
+                  <div key={goal.id} className="card min-w-[220px] p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">{goal.icon || "??"}</span>
+                      <div>
+                        <p className="font-bold text-slate-900">{goal.title}</p>
+                        <p className="text-sm text-slate-500">{goal.deadline || "Flexible target"}</p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-lg font-extrabold text-slate-900">
+                      {formatCurrency(goal.savedAmount)}
+                      <span className="ml-1 text-sm font-semibold text-slate-400">
+                        / {formatCurrency(goal.targetAmount || 0)}
+                      </span>
+                    </p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full rounded-full bg-[#1A73E8]" style={{ width: `${goal.progress}%` }} />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="card min-w-full p-6">
+                  <EmptyState title="No goals yet" body="Set your first savings target in the Goals tab." />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-extrabold text-slate-900">Alerts</h3>
+              <span className="text-sm font-semibold text-slate-500">Live budget watch</span>
+            </div>
+            <div className="space-y-3">
+              {data.alerts.length > 0 ? (
+                data.alerts.map((alert, index) => (
+                  <div key={`${alert.message}-${index}`} className={`card p-4 ${getAlertTone(alert.type)}`}>
+                    <p className="text-sm font-semibold">{alert.message}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="card p-5">
+                  <p className="text-sm text-slate-500">You are all clear right now.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TransactionsTab({
+  filter,
+  setFilter,
+  transactions,
+  onDelete,
+  onAddExpense,
+}: {
+  filter: string;
+  setFilter: (value: string) => void;
+  transactions: Transaction[];
+  onDelete: (id: string) => void;
+  onAddExpense: () => void;
+}) {
+  return (
+    <section className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="eyebrow">Transactions</p>
+          <h2 className="mt-2 text-3xl font-extrabold text-slate-900">All spending</h2>
+        </div>
+        <button onClick={onAddExpense} className="btn-primary px-5 py-3 text-sm">
+          Add expense
+        </button>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {["All", ...CATEGORIES.map((category) => category.name)].map((category) => {
+          const active = filter === category;
+          return (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex-1 py-3 flex flex-col items-center gap-0.5 transition-all ${
-                tab === t.key ? "text-indigo-600" : "text-gray-400"
+              key={category}
+              onClick={() => setFilter(category)}
+              className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                active ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-500"
               }`}
             >
-              <span className="text-lg">{t.icon}</span>
-              <span className="text-[10px] font-medium">{t.label}</span>
+              {category === "All" ? "All" : `${getCategoryIcon(category)} ${category}`}
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      <style jsx>{`
-        .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 8px); }
-        .animate-slideUp { animation: slideUp 0.3s ease-out; }
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
-      `}</style>
-    </div>
+      <div className="card overflow-hidden">
+        {transactions.length > 0 ? (
+          transactions.map((transaction) => (
+            <div key={transaction.id} className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 last:border-b-0">
+              <div
+                className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl"
+                style={{ backgroundColor: getCategoryBgColor(transaction.category) }}
+              >
+                {getCategoryIcon(transaction.category)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-bold text-slate-900">{transaction.title}</p>
+                <p className="text-sm text-slate-500">{transaction.category} • {transaction.date}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-extrabold text-slate-900">-{formatCurrency(transaction.amount)}</p>
+                <button onClick={() => onDelete(transaction.id)} className="mt-1 text-xs font-semibold text-[#D93025]">
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <EmptyState title="No transactions for this filter" body="Try another category or add a new expense." />
+        )}
+      </div>
+
+      <div className="card p-5">
+        <p className="eyebrow">Auto-categorization</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <AutoRule merchant="Swiggy" category="Food & Dining" />
+          <AutoRule merchant="Uber" category="Transport" />
+          <AutoRule merchant="Amazon" category="Shopping" />
+        </div>
+      </div>
+    </section>
   );
 }
 
-function LoadingSkeleton() {
+function GoalsTab(props: {
+  data: DashboardData;
+  contribution: Record<string, string>;
+  setContribution: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onAddMoney: (goal: Goal) => void;
+  onPayDebt: (debt: Debt, amount?: number) => void;
+  showGoalForm: boolean;
+  setShowGoalForm: (value: boolean) => void;
+  newGoalTitle: string;
+  setNewGoalTitle: (value: string) => void;
+  newGoalIcon: string;
+  setNewGoalIcon: (value: string) => void;
+  newGoalTarget: string;
+  setNewGoalTarget: (value: string) => void;
+  newGoalSaved: string;
+  setNewGoalSaved: (value: string) => void;
+  newGoalDeadline: string;
+  setNewGoalDeadline: (value: string) => void;
+  createGoal: () => void;
+  showDebtForm: boolean;
+  setShowDebtForm: (value: boolean) => void;
+  debtName: string;
+  setDebtName: (value: string) => void;
+  debtAmount: string;
+  setDebtAmount: (value: string) => void;
+  debtEmi: string;
+  setDebtEmi: (value: string) => void;
+  debtPaid: string;
+  setDebtPaid: (value: string) => void;
+  createDebt: () => void;
+}) {
+  const {
+    data,
+    contribution,
+    setContribution,
+    onAddMoney,
+    onPayDebt,
+    showGoalForm,
+    setShowGoalForm,
+    newGoalTitle,
+    setNewGoalTitle,
+    newGoalIcon,
+    setNewGoalIcon,
+    newGoalTarget,
+    setNewGoalTarget,
+    newGoalSaved,
+    setNewGoalSaved,
+    newGoalDeadline,
+    setNewGoalDeadline,
+    createGoal,
+    showDebtForm,
+    setShowDebtForm,
+    debtName,
+    setDebtName,
+    debtAmount,
+    setDebtAmount,
+    debtEmi,
+    setDebtEmi,
+    debtPaid,
+    setDebtPaid,
+    createDebt,
+  } = props;
+
   return (
-    <div className="min-h-screen bg-[#FAFBFC] pb-20">
-      <div className="bg-white border-b border-gray-100 px-5 py-4">
-        <div className="max-w-lg mx-auto">
-          <div className="h-4 bg-gray-100 rounded w-24 mb-2 animate-pulse" />
-          <div className="h-6 bg-gray-100 rounded w-32 animate-pulse" />
-        </div>
-      </div>
-      <div className="max-w-lg mx-auto px-5 pt-5 space-y-4">
-        <div className="card p-5">
-          <div className="h-4 bg-gray-100 rounded w-20 mb-3 animate-pulse" />
-          <div className="h-8 bg-gray-100 rounded w-36 mb-4 animate-pulse" />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="h-16 bg-gray-50 rounded-xl animate-pulse" />
-            <div className="h-16 bg-gray-50 rounded-xl animate-pulse" />
+    <section className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="eyebrow">Goals</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-900">Savings progress</h2>
+            </div>
+            <button onClick={() => setShowGoalForm(!showGoalForm)} className="btn-primary px-5 py-3 text-sm">
+              {showGoalForm ? "Close form" : "New goal"}
+            </button>
+          </div>
+
+          {showGoalForm ? (
+            <div className="card mb-4 p-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Goal type</label>
+                  <select
+                    value={newGoalTitle}
+                    onChange={(event) => {
+                      const selected = GOAL_PRESETS.find((goal) => goal.title === event.target.value);
+                      setNewGoalTitle(event.target.value);
+                      setNewGoalIcon(selected?.icon || "??");
+                    }}
+                    className="input-field"
+                  >
+                    <option value="">Select a goal</option>
+                    {GOAL_PRESETS.map((goal) => (
+                      <option key={goal.title} value={goal.title}>
+                        {goal.title}
+                      </option>
+                    ))}
+                    <option value="Custom">Custom</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Icon</label>
+                  <input value={newGoalIcon} onChange={(event) => setNewGoalIcon(event.target.value)} className="input-field" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Target amount</label>
+                  <input value={newGoalTarget} onChange={(event) => setNewGoalTarget(event.target.value)} className="input-field" type="number" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Already saved</label>
+                  <input value={newGoalSaved} onChange={(event) => setNewGoalSaved(event.target.value)} className="input-field" type="number" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Deadline</label>
+                  <input value={newGoalDeadline} onChange={(event) => setNewGoalDeadline(event.target.value)} className="input-field" type="month" />
+                </div>
+              </div>
+              <button onClick={createGoal} className="btn-primary mt-5 px-5 py-3 text-sm">
+                Save goal
+              </button>
+            </div>
+          ) : null}
+
+          <div className="space-y-4">
+            {data.goals.length > 0 ? (
+              data.goals.map((goal) => (
+                <div key={goal.id} className="card p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">{goal.icon || "??"}</span>
+                      <div>
+                        <p className="text-lg font-extrabold text-slate-900">{goal.title}</p>
+                        <p className="text-sm text-slate-500">{goal.deadline || "Flexible deadline"}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-extrabold text-slate-900">{formatCurrency(goal.savedAmount)}</p>
+                      <p className="text-sm text-slate-500">of {formatCurrency(goal.targetAmount || 0)}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-[#1A73E8]" style={{ width: `${goal.progress}%` }} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+                    <span>{goal.progress}% complete</span>
+                    <span>{formatCurrency(goal.remainingAmount || 0)} still needed</span>
+                  </div>
+                  <div className="mt-4 flex gap-3">
+                    <div className="relative flex-1">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">Rs</span>
+                      <input
+                        value={contribution[goal.id] || ""}
+                        onChange={(event) => setContribution((current) => ({ ...current, [goal.id]: event.target.value }))}
+                        placeholder="Add money"
+                        type="number"
+                        className="input-field pl-12"
+                      />
+                    </div>
+                    <button onClick={() => onAddMoney(goal)} className="btn-primary px-5 py-3 text-sm">
+                      Add
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="card p-6">
+                <EmptyState title="No savings goals yet" body="Create your first goal to start building progress bars and contributions." />
+              </div>
+            )}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="card p-4 h-24 animate-pulse" />
+
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="eyebrow">Debts</p>
+              <h2 className="mt-2 text-3xl font-extrabold text-slate-900">EMI tracking</h2>
+            </div>
+            <button onClick={() => setShowDebtForm(!showDebtForm)} className="btn-secondary px-5 py-3 text-sm">
+              {showDebtForm ? "Close form" : "Add debt"}
+            </button>
+          </div>
+
+          {showDebtForm ? (
+            <div className="card mb-4 p-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <input value={debtName} onChange={(event) => setDebtName(event.target.value)} placeholder="Debt name" className="input-field" />
+                <input value={debtAmount} onChange={(event) => setDebtAmount(event.target.value)} placeholder="Total amount" type="number" className="input-field" />
+                <input value={debtEmi} onChange={(event) => setDebtEmi(event.target.value)} placeholder="Monthly EMI" type="number" className="input-field" />
+                <input value={debtPaid} onChange={(event) => setDebtPaid(event.target.value)} placeholder="Already paid" type="number" className="input-field" />
+              </div>
+              <button onClick={createDebt} className="btn-primary mt-5 px-5 py-3 text-sm">
+                Save debt
+              </button>
+            </div>
+          ) : null}
+
+          <div className="card mb-4 p-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <MiniMetric label="Debt left" value={formatCurrency(data.overview.totalDebt)} helper="Outstanding balance" />
+              <MiniMetric label="Monthly EMI" value={formatCurrency(data.overview.totalEMI)} helper="Current monthly outflow" />
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {data.debts.length > 0 ? (
+              data.debts.map((debt) => (
+                <div key={debt.id} className="card p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-lg font-extrabold text-slate-900">{debt.name}</p>
+                      <p className="text-sm text-slate-500">EMI {formatCurrency(debt.monthlyEMI)} per month</p>
+                    </div>
+                    <div className="rounded-full bg-[#FFF3E0] px-3 py-1 text-xs font-bold text-[#F29900]">
+                      {debt.progress}% paid
+                    </div>
+                  </div>
+                  <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-[#0F9D58]" style={{ width: `${debt.progress}%` }} />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-sm text-slate-500">
+                    <span>Paid {formatCurrency(debt.paidAmount)}</span>
+                    <span>{formatCurrency(debt.remaining)} remaining</span>
+                  </div>
+                  <button onClick={() => onPayDebt(debt)} className="btn-primary mt-4 w-full py-3 text-sm">
+                    Mark EMI paid
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="card p-6">
+                <EmptyState title="No debts tracked" body="Add loans or EMIs here to monitor payoff progress." />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MetricCard({ label, value, tone }: { label: string; value: string; tone: "red" | "green" | "blue" }) {
+  const tones = {
+    red: "bg-[#FDECEC] text-[#D93025]",
+    green: "bg-[#E9F7EF] text-[#0F9D58]",
+    blue: "bg-[#E8F0FE] text-[#1A73E8]",
+  } as const;
+
+  return (
+    <div className={`rounded-[22px] p-4 ${tones[tone]}`}>
+      <p className="text-sm font-semibold">{label}</p>
+      <p className="mt-2 text-2xl font-extrabold">{value}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, helper }: { label: string; value: string; helper: string }) {
+  return (
+    <div className="rounded-[22px] bg-slate-50 p-4">
+      <p className="text-sm font-semibold text-slate-500">{label}</p>
+      <p className="mt-2 text-xl font-extrabold text-slate-900">{value}</p>
+      <p className="mt-1 text-sm text-slate-500">{helper}</p>
+    </div>
+  );
+}
+
+function AutoRule({ merchant, category }: { merchant: string; category: string }) {
+  return (
+    <div className="rounded-[22px] bg-slate-50 p-4">
+      <p className="text-sm font-bold text-slate-900">{merchant}</p>
+      <p className="mt-1 text-sm text-slate-500">Auto-maps to {category}</p>
+    </div>
+  );
+}
+
+function TransactionRow({ transaction, compact = false }: { transaction: Transaction; compact?: boolean }) {
+  return (
+    <div className={`flex items-center gap-3 border-b border-slate-100 px-5 ${compact ? "py-4" : "py-5"} last:border-b-0`}>
+      <div
+        className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl"
+        style={{ backgroundColor: getCategoryBgColor(transaction.category) }}
+      >
+        {getCategoryIcon(transaction.category)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-bold text-slate-900">{transaction.title}</p>
+        <p className="text-sm text-slate-500">{transaction.category} • {transaction.date}</p>
+      </div>
+      <p className="font-extrabold text-slate-900">-{formatCurrency(transaction.amount)}</p>
+    </div>
+  );
+}
+
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="p-6 text-center">
+      <p className="text-lg font-extrabold text-slate-900">{title}</p>
+      <p className="mt-2 text-sm text-slate-500">{body}</p>
+    </div>
+  );
+}
+
+function getAlertTone(type: AlertItem["type"]) {
+  if (type === "danger") return "bg-[#FDECEC] text-[#D93025]";
+  if (type === "warning") return "bg-[#FFF3E0] text-[#F29900]";
+  if (type === "success") return "bg-[#E9F7EF] text-[#0F9D58]";
+  return "bg-[#E8F0FE] text-[#1A73E8]";
+}
+
+function LoadingState() {
+  return (
+    <div className="min-h-screen bg-[#FAFBFC] px-5 py-10">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <div className="h-20 animate-pulse rounded-[28px] bg-white" />
+        <div className="grid gap-5 lg:grid-cols-3">
+          <div className="h-72 animate-pulse rounded-[28px] bg-white lg:col-span-2" />
+          <div className="h-72 animate-pulse rounded-[28px] bg-white" />
+        </div>
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="h-44 animate-pulse rounded-[28px] bg-white" />
           ))}
         </div>
       </div>
     </div>
   );
 }
+

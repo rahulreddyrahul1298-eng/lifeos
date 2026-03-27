@@ -1,56 +1,107 @@
-"use client";
-import { useState, useEffect, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+﻿"use client";
+
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function AuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isSignup, setIsSignup] = useState(false);
-  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState("");
-  const [error, setError] = useState(""); const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => { if (searchParams.get("mode") === "signup") setIsSignup(true); }, [searchParams]);
+  useEffect(() => {
+    if (searchParams.get("mode") === "signup") setIsSignup(true);
+  }, [searchParams]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(""); setLoading(true);
-    try {
-      const ep = isSignup ? "/api/auth/signup" : "/api/auth/login";
-      const body = isSignup ? { email, password, name } : { email, password };
-      const res = await fetch(ep, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "Something went wrong"); return; }
-      router.push(data.onboarded ? "/dashboard" : "/onboarding");
-    } catch { setError("Network error."); } finally { setLoading(false); }
-  };
-
-  const handleGuest = async () => {
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
     setLoading(true);
-    try { const res = await fetch("/api/auth/guest", { method: "POST" }); const data = await res.json(); if (data.success) router.push("/onboarding"); }
-    catch { setError("Something went wrong"); } finally { setLoading(false); }
-  };
+    try {
+      const endpoint = isSignup ? "/api/auth/signup" : "/api/auth/login";
+      const body = isSignup ? { email, password, name } : { email, password };
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Something went wrong");
+        return;
+      }
+      router.push(data.onboarded ? "/dashboard" : "/onboarding");
+    } catch {
+      setError("Network error.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGuest() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/guest", { method: "POST" });
+      const data = await response.json();
+      if (data.success) router.push("/onboarding");
+    } catch {
+      setError("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="card p-8 sm:p-10">
-      <h1 className="text-2xl font-black text-center mb-1 text-ink-900">{isSignup ? "Create your account" : "Welcome back"}</h1>
-      <p className="text-sm text-ink-300 text-center mb-8">{isSignup ? "Start your 30-day transformation" : "Continue your journey"}</p>
+      <h1 className="mb-1 text-center text-2xl font-extrabold text-slate-900">
+        {isSignup ? "Create your account" : "Welcome back"}
+      </h1>
+      <p className="mb-8 text-center text-sm text-slate-500">
+        {isSignup ? "Start building better money habits today." : "Continue managing your money in one place."}
+      </p>
 
-      {error && <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl p-4 mb-6">{error}</div>}
+      {error ? <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-600">{error}</div> : null}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {isSignup && <div><label className="block text-sm text-ink-500 font-semibold mb-2">Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className="input-field" placeholder="Your name" /></div>}
-        <div><label className="block text-sm text-ink-500 font-semibold mb-2">Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="input-field" placeholder="you@example.com" /></div>
-        <div><label className="block text-sm text-ink-500 font-semibold mb-2">Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={6} className="input-field" placeholder="Min 6 characters" /></div>
-        <button type="submit" disabled={loading} className="w-full btn-primary py-3.5 text-sm disabled:opacity-50 mt-2">{loading ? "Please wait..." : isSignup ? "Create Account" : "Sign In"}</button>
+        {isSignup ? (
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Name</label>
+            <input type="text" value={name} onChange={(event) => setName(event.target.value)} className="input-field" placeholder="Your name" />
+          </div>
+        ) : null}
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-slate-700">Email</label>
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required className="input-field" placeholder="you@example.com" />
+        </div>
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-slate-700">Password</label>
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} className="input-field" placeholder="Minimum 6 characters" />
+        </div>
+        <button type="submit" disabled={loading} className="btn-primary mt-2 w-full py-3.5 text-sm">
+          {loading ? "Please wait..." : isSignup ? "Create account" : "Sign in"}
+        </button>
       </form>
 
-      <div className="flex items-center gap-3 my-7"><div className="flex-1 h-px bg-gray-100" /><span className="text-xs text-ink-300">or</span><div className="flex-1 h-px bg-gray-100" /></div>
+      <div className="my-7 flex items-center gap-3">
+        <div className="h-px flex-1 bg-slate-200" />
+        <span className="text-xs text-slate-400">or</span>
+        <div className="h-px flex-1 bg-slate-200" />
+      </div>
 
-      <button onClick={handleGuest} disabled={loading} className="w-full btn-secondary py-3.5 text-sm disabled:opacity-50">Continue as Guest</button>
+      <button onClick={handleGuest} disabled={loading} className="btn-secondary w-full py-3.5 text-sm">
+        Continue as guest
+      </button>
 
-      <p className="text-center text-sm text-ink-300 mt-7">
-        {isSignup ? (<>Already have an account? <button onClick={()=>setIsSignup(false)} className="text-brand-500 font-semibold hover:underline">Sign in</button></>)
-        : (<>Don&apos;t have an account? <button onClick={()=>setIsSignup(true)} className="text-brand-500 font-semibold hover:underline">Sign up</button></>)}
+      <p className="mt-7 text-center text-sm text-slate-500">
+        {isSignup ? "Already have an account? " : "Don't have an account? "}
+        <button onClick={() => setIsSignup((current) => !current)} className="font-semibold text-[#1A73E8]">
+          {isSignup ? "Sign in" : "Sign up"}
+        </button>
       </p>
     </div>
   );
@@ -58,11 +109,16 @@ function AuthForm() {
 
 export default function AuthPage() {
   return (
-    <div className="min-h-screen bg-surface-50 flex items-center justify-center px-6">
+    <div className="flex min-h-screen items-center justify-center bg-[#FAFBFC] px-6">
       <div className="w-full max-w-sm">
-        <Link href="/" className="block text-center mb-10"><span className="text-2xl font-black text-ink-900">Life<span className="text-gradient">OS</span></span></Link>
-        <Suspense fallback={<div className="card p-10 text-center text-ink-300 text-sm">Loading...</div>}><AuthForm /></Suspense>
+        <Link href="/" className="mb-10 block text-center text-2xl font-extrabold text-slate-900">
+          LifeOS
+        </Link>
+        <Suspense fallback={<div className="card p-10 text-center text-sm text-slate-500">Loading...</div>}>
+          <AuthForm />
+        </Suspense>
       </div>
     </div>
   );
 }
+
