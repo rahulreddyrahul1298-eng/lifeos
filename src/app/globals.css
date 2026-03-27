@@ -28,42 +28,46 @@ body {
 
   .card {
     background: #FFFFFF;
-    border: 1px solid #E5E7EB;
-    border-radius: 12px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   }
 
   .btn-primary {
     background-color: #6366F1;
     color: white;
-    border-radius: 8px;
-    font-weight: 500;
-    transition: background-color 0.15s ease;
+    border-radius: 10px;
+    font-weight: 600;
+    transition: all 0.15s ease;
   }
 
   .btn-primary:hover {
     background-color: #4F46E5;
   }
 
+  .btn-primary:active {
+    transform: scale(0.97);
+  }
+
   .btn-outline {
     background: #FFFFFF;
-    border: 1px solid #E5E7EB;
-    border-radius: 8px;
+    border: 1px solid #F3F4F6;
+    border-radius: 10px;
     font-weight: 500;
     color: #374151;
     transition: all 0.15s ease;
   }
 
   .btn-outline:hover {
-    border-color: #D1D5DB;
+    border-color: #E5E7EB;
     background: #F9FAFB;
   }
 
   .input-field {
     width: 100%;
     background: #FFFFFF;
-    border: 1px solid #E5E7EB;
-    border-radius: 8px;
+    border: 1px solid #F3F4F6;
+    border-radius: 10px;
     padding: 10px 14px;
     font-size: 14px;
     color: #111827;
@@ -73,27 +77,55 @@ body {
 
   .input-field:focus {
     border-color: #6366F1;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.06);
   }
 
   .input-field::placeholder {
     color: #9CA3AF;
   }
+
+  /* Animations */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.35s ease-out forwards;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out forwards;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: #FAFAFA;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D1D5DB;
-  border-radius: 3px;
+  background: #E5E7EB;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
+  background: #D1D5DB;
 }
 
 select {
