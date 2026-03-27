@@ -3,18 +3,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-const comparisons = [
-  { feature: "Habits", free: "3 max", premium: "Unlimited", hl: true },
-  { feature: "Goals", free: "2 max", premium: "Unlimited", hl: true },
-  { feature: "Expense Tracking", free: "Basic", premium: "Full + Categories", hl: false },
-  { feature: "Life Score", free: "Yes", premium: "Yes + Breakdown", hl: false },
-  { feature: "Weekly Calendar", free: "No", premium: "Yes", hl: true },
-  { feature: "Spending Charts", free: "No", premium: "Yes", hl: true },
-  { feature: "AI Insights", free: "1/day", premium: "Unlimited", hl: true },
-  { feature: "Category Budgets", free: "No", premium: "Yes", hl: true },
-  { feature: "Predictions", free: "No", premium: "Yes", hl: true },
-];
-
 export default function PricingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -47,100 +35,64 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-dark-bg relative overflow-hidden">
-      <div className="absolute top-1/3 -left-32 w-80 h-80 bg-accent-primary/10 rounded-full blur-[100px]" />
-      <div className="absolute bottom-1/3 -right-32 w-80 h-80 bg-accent-secondary/10 rounded-full blur-[100px]" />
-
-      <nav className="relative z-10 bg-dark-bg/90 backdrop-blur-xl border-b border-white/5 sticky top-0">
+    <div className="min-h-screen bg-surface-50">
+      <nav className="bg-white/80 backdrop-blur-xl border-b border-gray-100 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="text-lg font-black">Life<span className="text-gradient">OS</span></Link>
-          <Link href="/dashboard" className="text-sm text-white/40 hover:text-white transition-colors">← Dashboard</Link>
+          <Link href="/" className="text-lg font-black text-ink-900">Life<span className="text-gradient">OS</span></Link>
+          <Link href="/dashboard" className="text-sm text-ink-300 hover:text-ink-900 font-medium transition-colors">← Dashboard</Link>
         </div>
       </nav>
 
-      <div className="relative z-10 max-w-4xl mx-auto px-6 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-3xl font-black mb-3">Unlock Your Full Potential</h1>
-          <p className="text-white/40">Start free. Upgrade when you&apos;re ready to transform.</p>
+      <div className="max-w-4xl mx-auto px-6 py-16">
+        <div className="text-center mb-14">
+          <h1 className="text-4xl font-black text-ink-900 mb-3">Unlock Your Full Potential</h1>
+          <p className="text-ink-500 text-lg">Start free. Upgrade when you&apos;re ready.</p>
         </div>
 
-        {/* Plans */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto mb-16">
-          <div className="glass p-6">
-            <div className="text-sm font-bold text-white/50 mb-1">Free</div>
-            <div className="text-3xl font-black mb-4">₹0</div>
-            <div className="space-y-2.5 mb-6">{["Expense tracking", "3 daily habits", "Life Score", "2 goals", "1 AI insight/day", "Achievements"].map((f,i)=>(
-              <div key={i} className="flex items-center gap-2 text-sm text-white/60"><span className="text-green-400 text-xs">✓</span>{f}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 max-w-2xl mx-auto mb-20">
+          <div className="card p-8">
+            <div className="text-sm font-bold text-ink-300 mb-2">Free</div>
+            <div className="text-4xl font-black text-ink-900 mb-6">₹0</div>
+            <div className="space-y-3 mb-8">{["Expense tracking","3 daily habits","Life Score","2 goals","1 AI insight/day","Achievements"].map((f,i)=>(
+              <div key={i} className="flex items-center gap-3 text-sm text-ink-700"><span className="text-emerald-500 font-bold">✓</span>{f}</div>
             ))}</div>
-            <button onClick={()=>router.push("/auth")} className="btn-outline w-full py-3 text-sm">Start Free</button>
+            <button onClick={()=>router.push("/auth")} className="btn-secondary w-full py-3.5 text-sm">Start Free</button>
           </div>
 
-          <div className="glass p-6 border-accent-primary/30 relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-gradient-primary text-white text-[9px] font-black px-3 py-1 rounded-bl-2xl">BEST VALUE</div>
-            <div className="text-sm font-bold text-accent-primary mb-1">Premium</div>
-            <div className="text-3xl font-black mb-1">₹99<span className="text-lg text-white/40 font-normal">/mo</span></div>
-            <div className="text-xs text-white/30 mb-4">Save ₹15,000+/month with insights</div>
-            <div className="space-y-2.5 mb-6">{["Everything in Free", "Unlimited habits & goals", "Unlimited AI insights", "Spending predictions", "Category budgets", "7-day spending charts", "Weekly habit calendar", "Monthly reports"].map((f,i)=>(
-              <div key={i} className="flex items-center gap-2 text-sm text-white/60"><span className="text-accent-primary text-xs">✓</span>{f}</div>
+          <div className="card p-8 ring-2 ring-brand-500/15 relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-gradient-to-r from-brand-500 to-purple-500 text-white text-[9px] font-black px-4 py-1.5 rounded-bl-3xl">BEST VALUE</div>
+            <div className="text-sm font-bold text-brand-500 mb-2">Premium</div>
+            <div className="text-4xl font-black text-ink-900 mb-1">₹99<span className="text-lg text-ink-300 font-normal">/mo</span></div>
+            <p className="text-xs text-ink-300 mb-6">Save ₹15,000+/month</p>
+            <div className="space-y-3 mb-8">{["Everything in Free","Unlimited habits & goals","Unlimited AI insights","Spending predictions","Category budgets","7-day spending charts","Weekly habit calendar","Monthly reports"].map((f,i)=>(
+              <div key={i} className="flex items-center gap-3 text-sm text-ink-700"><span className="text-brand-500 font-bold">✓</span>{f}</div>
             ))}</div>
-            {isPremium ? (
-              <div className="w-full py-3 text-center text-sm font-bold text-green-400 bg-green-500/10 rounded-2xl border border-green-500/20">✓ Active</div>
-            ) : (
-              <button onClick={handleUpgrade} disabled={loading} className="btn-primary w-full py-3 text-sm shadow-glow disabled:opacity-50">
-                {loading ? "Processing..." : "Upgrade Now →"}
-              </button>
-            )}
+            {isPremium ? <div className="w-full py-3.5 text-center text-sm font-bold text-emerald-600 bg-emerald-50 rounded-2xl border border-emerald-100">✓ Active</div>
+            : <button onClick={handleUpgrade} disabled={loading} className="btn-primary w-full py-3.5 text-sm disabled:opacity-50">{loading ? "Processing..." : "Upgrade Now →"}</button>}
           </div>
-        </div>
-
-        {/* Comparison */}
-        <div className="glass p-6 max-w-2xl mx-auto mb-16 overflow-x-auto">
-          <h3 className="font-bold mb-4 text-center">Feature Comparison</h3>
-          <table className="w-full text-sm">
-            <thead><tr className="text-white/30 text-xs"><th className="text-left py-2 font-medium">Feature</th><th className="text-center py-2 font-medium">Free</th><th className="text-center py-2 font-medium text-accent-primary">Premium</th></tr></thead>
-            <tbody>{comparisons.map((c,i)=>(
-              <tr key={i} className={`border-t border-white/5 ${c.hl?"":"opacity-60"}`}>
-                <td className="py-2.5 font-medium">{c.feature}</td>
-                <td className="py-2.5 text-center text-white/40">{c.free}</td>
-                <td className="py-2.5 text-center text-accent-primary font-semibold">{c.premium}</td>
-              </tr>
-            ))}</tbody>
-          </table>
         </div>
 
         {/* FAQ */}
         <div className="max-w-2xl mx-auto mb-16">
-          <h3 className="font-bold text-center mb-6">FAQ</h3>
-          <div className="space-y-3">
-            {[
-              { q: "Can I cancel anytime?", a: "Yes. Cancel anytime, no questions asked." },
-              { q: "Is there a money-back guarantee?", a: "Yes! 30-day money-back guarantee." },
-              { q: "Is my data safe?", a: "Absolutely. Your data is encrypted and private." },
-              { q: "What payment methods?", a: "UPI, cards, net banking via Razorpay." },
-            ].map((f,i)=>(
-              <div key={i} className="glass p-4">
-                <p className="text-sm font-bold mb-1">{f.q}</p>
-                <p className="text-xs text-white/40">{f.a}</p>
-              </div>
-            ))}
-          </div>
+          <h3 className="text-xl font-black text-center mb-8">FAQ</h3>
+          <div className="space-y-3">{[
+            {q:"Can I cancel anytime?",a:"Yes. Cancel anytime, no questions asked."},
+            {q:"Is there a money-back guarantee?",a:"Yes! 30-day money-back guarantee."},
+            {q:"Is my data safe?",a:"Absolutely. Encrypted and private."},
+            {q:"What payment methods?",a:"UPI, cards, net banking via Razorpay."},
+          ].map((f,i)=>(<div key={i} className="card p-5"><p className="text-sm font-bold text-ink-900 mb-1">{f.q}</p><p className="text-sm text-ink-300">{f.a}</p></div>))}</div>
         </div>
 
-        {/* Final CTA */}
         {!isPremium && (
-          <div className="text-center pb-8">
-            <h3 className="text-xl font-black mb-3">Ready to transform?</h3>
-            <button onClick={handleUpgrade} disabled={loading} className="btn-primary px-10 py-4 text-base font-bold shadow-glow-lg active:scale-95 transition-all disabled:opacity-50">
-              {loading ? "Processing..." : "Get Premium → ₹99/mo"}
-            </button>
-            <p className="text-xs text-white/20 mt-3">30-day money-back guarantee</p>
+          <div className="text-center pb-10">
+            <h3 className="text-2xl font-black text-ink-900 mb-4">Ready to transform?</h3>
+            <button onClick={handleUpgrade} disabled={loading} className="btn-primary px-12 py-4 text-lg font-bold disabled:opacity-50">{loading ? "Processing..." : "Get Premium → ₹99/mo"}</button>
+            <p className="text-xs text-ink-300 mt-3">30-day money-back guarantee</p>
           </div>
         )}
       </div>
 
-      <footer className="relative z-10 border-t border-white/5 py-6">
-        <div className="max-w-4xl mx-auto px-6 text-center text-xs text-white/20">© 2024 LifeOS</div>
-      </footer>
+      <footer className="border-t border-gray-100 py-8 bg-white"><div className="max-w-4xl mx-auto px-6 text-center text-xs text-ink-300">© 2024 LifeOS</div></footer>
     </div>
   );
 }
