@@ -1,385 +1,151 @@
 "use client";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
 export default function LandingPage() {
-  const [scrolled, setScrolled] = useState(false);
-  const [savedAmount, setSavedAmount] = useState(0);
-  const [activeTestimonial, setActiveTestimonial] = useState(0);
+  const router = useRouter();
+  const [count, setCount] = useState(0);
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // Animated counter
   useEffect(() => {
     const target = 15000;
-    const duration = 2000;
-    const step = target / (duration / 16);
-    let current = 0;
-    const timer = setInterval(() => {
-      current += step;
-      if (current >= target) { current = target; clearInterval(timer); }
-      setSavedAmount(Math.round(current));
-    }, 16);
-    return () => clearInterval(timer);
+    const dur = 2000;
+    const step = target / (dur / 16);
+    let c = 0;
+    const t = setInterval(() => { c += step; if (c >= target) { setCount(target); clearInterval(t); } else setCount(Math.floor(c)); }, 16);
+    return () => clearInterval(t);
   }, []);
 
-  const testimonials = [
-    { name: "Priya K.", role: "Software Engineer", text: "Saved 18,000 in my first month. The predictions showed me I was overspending on food." },
-    { name: "Rahul S.", role: "College Student", text: "My pocket money used to run out by 20th. Now it lasts the full month plus I save 2,000." },
-    { name: "Sneha M.", role: "Marketing Manager", text: "The category budgets changed everything. I cut shopping by 40% without feeling restricted." },
-    { name: "Arjun D.", role: "Freelancer", text: "Irregular income was hard to manage. LifeOS helps me plan every month perfectly." },
-  ];
-
-  // Auto-rotate testimonials
-  useEffect(() => {
-    const timer = setInterval(() => setActiveTestimonial((p) => (p + 1) % testimonials.length), 4000);
-    return () => clearInterval(timer);
-  }, [testimonials.length]);
-
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-dark-bg relative overflow-hidden">
+      {/* Animated BG */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 -left-32 w-96 h-96 bg-accent-primary/10 rounded-full blur-[120px] animate-float" />
+        <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-accent-secondary/10 rounded-full blur-[120px] animate-float" style={{ animationDelay: "3s" }} />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent-primary/5 rounded-full blur-[150px]" />
+      </div>
+
       {/* Nav */}
-      <nav className={`fixed top-0 w-full z-50 transition-all duration-200 ${scrolled ? "bg-white border-b border-gray-200" : "bg-white/80 backdrop-blur-sm"}`}>
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-gray-900">
-            Life<span className="text-indigo-500">OS</span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/auth" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-3 py-2">
-              Log in
-            </Link>
-            <Link href="/auth?mode=signup" className="btn-primary px-4 py-2 text-sm">
-              Get Started
-            </Link>
-          </div>
+      <nav className="relative z-10 max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+        <span className="text-xl font-black">Life<span className="text-gradient">OS</span></span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.push("/auth")} className="text-sm text-white/50 hover:text-white transition-colors">Log in</button>
+          <button onClick={() => router.push("/auth")} className="btn-primary px-5 py-2.5 text-sm">Get Started</button>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="pt-32 pb-24 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-16 items-center">
-            <div>
-              <p className="text-sm font-medium text-indigo-500 mb-4">
-                Personal finance, simplified
-              </p>
-              <h1 className="text-4xl md:text-5xl lg:text-[56px] font-bold leading-[1.1] tracking-tight text-gray-900 mb-6">
-                Spend &#8377;99.{" "}
-                <span className="text-indigo-500">Save &#8377;15,000.</span>
-              </h1>
-              <p className="text-lg text-gray-500 mb-10 leading-relaxed max-w-lg">
-                Most people don&apos;t know where their money goes. LifeOS shows you — then helps you save it. Track every rupee, build better habits, and watch your savings grow.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 mb-8">
-                <Link href="/auth?mode=signup" className="btn-primary px-7 py-3 text-sm text-center">
-                  Start Saving — It&apos;s Free
-                </Link>
-                <Link href="#how-it-works" className="btn-outline px-7 py-3 text-sm text-center">
-                  How it works
-                </Link>
-              </div>
-              <div className="flex items-center gap-6 text-sm text-gray-400">
-                <span>Free to start</span>
-                <span>No credit card</span>
-                <span>2 min setup</span>
-              </div>
-            </div>
-
-            {/* Savings Counter */}
-            <div className="flex justify-center">
-              <div className="card p-8 w-full max-w-sm">
-                <div className="text-center mb-8">
-                  <p className="text-sm text-gray-400 mb-3">Users save on average</p>
-                  <div className="text-5xl font-bold text-green-600 tabular-nums tracking-tight">
-                    &#8377;{savedAmount.toLocaleString()}
-                  </div>
-                  <p className="text-sm text-gray-400 mt-2">per month</p>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between rounded-lg p-3 bg-gray-50">
-                    <span className="text-sm text-gray-500">Per year</span>
-                    <span className="text-sm font-semibold text-gray-900">&#8377;1,80,000</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg p-3 bg-gray-50">
-                    <span className="text-sm text-gray-500">LifeOS Premium</span>
-                    <span className="text-sm font-semibold text-indigo-500">&#8377;99/month</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg p-3 bg-gray-50">
-                    <span className="text-sm text-gray-500">Return on investment</span>
-                    <span className="text-sm font-semibold text-green-600">150x</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+      <section className="relative z-10 max-w-4xl mx-auto px-6 pt-16 pb-20 text-center">
+        <div className="inline-block mb-6">
+          <span className="glass px-4 py-1.5 text-xs font-semibold text-accent-primary inline-block">
+            ✨ Join {count.toLocaleString()}+ people fixing their life
+          </span>
         </div>
-      </section>
+        <h1 className="text-4xl sm:text-6xl font-black leading-tight tracking-tight">Fix Your Life<br /><span className="text-gradient">in 30 Days</span></h1>
+        <p className="text-lg text-white/50 mt-6 max-w-xl mx-auto leading-relaxed">Money. Discipline. Habits. One system.<br />Track spending, build habits, and see real improvement — every single day.</p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
+          <button onClick={() => router.push("/auth")} className="btn-primary px-10 py-4 text-lg font-bold shadow-glow-lg hover:shadow-glow active:scale-95 transition-all w-full sm:w-auto">Start Free Challenge →</button>
+          <span className="text-sm text-white/30">No credit card required</span>
+        </div>
 
-      {/* Social Proof */}
-      <section className="py-8 px-6 border-y border-gray-100 bg-gray-50/50">
-        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-12 text-center">
-          {[
-            { num: "10,000+", label: "Active Users" },
-            { num: "₹15Cr+", label: "Money Saved" },
-            { num: "4.8", label: "User Rating" },
-            { num: "50,000+", label: "Habits Tracked" },
-          ].map((s, i) => (
-            <div key={i}>
-              <div className="text-lg font-semibold text-gray-900">{s.num}</div>
-              <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
-            </div>
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-4 mt-16 max-w-lg mx-auto">
+          {[{ v: "10K+", l: "Active Users" }, { v: "₹15Cr", l: "Money Saved" }, { v: "4.8★", l: "Rating" }].map((s, i) => (
+            <div key={i} className="glass p-4 text-center"><div className="text-xl font-black text-white">{s.v}</div><div className="text-[10px] text-white/40 mt-1 font-medium">{s.l}</div></div>
           ))}
         </div>
       </section>
 
       {/* How it works */}
-      <section className="py-24 px-6" id="how-it-works">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-sm font-medium text-indigo-500 mb-3">How it works</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Where does your money go?
-            </h2>
-            <p className="text-gray-500 max-w-lg mx-auto">
-              Most people lose ₹5,000–15,000 every month on things they don&apos;t even notice.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              { step: "01", title: "Track Everything", desc: "One tap to add any expense. Coffee, cab, groceries — track it all in 2 seconds." },
-              { step: "02", title: "See The Truth", desc: "LifeOS shows where your money actually goes. Most people are surprised by the results." },
-              { step: "03", title: "Start Saving", desc: "Set category budgets, get alerts before overspending, and watch your savings grow." },
-            ].map((s, i) => (
-              <div key={i} className="card p-6">
-                <div className="text-xs font-semibold text-indigo-500 mb-4">{s.step}</div>
-                <h3 className="text-base font-semibold text-gray-900 mb-2">{s.title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Student vs Employee */}
-      <section className="py-24 px-6 bg-gray-50/50">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-sm font-medium text-indigo-500 mb-3">For everyone</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              Built for your life
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* Student */}
-            <div className="card p-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">For Students</h3>
-              <p className="text-sm text-gray-500 mb-6">Pocket money running out by mid-month? Not anymore.</p>
-              <ul className="space-y-3 mb-6">
-                {[
-                  "Track hostel, food, and transport expenses",
-                  "Set monthly pocket money budget",
-                  "See if you can afford that movie this weekend",
-                  "Build study habits with streak tracking",
-                  "Split budget: Food ₹3K, Transport ₹1K, Fun ₹2K",
-                  "Get warned before money runs out",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
-                    <span className="text-indigo-500 mt-0.5 flex-shrink-0">&#10003;</span>{item}
-                  </li>
-                ))}
-              </ul>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-xs text-gray-400 mb-1">Average student saves</p>
-                <p className="text-base font-semibold text-gray-900">₹2,000 – ₹5,000/month</p>
-              </div>
+      <section className="relative z-10 max-w-4xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-black text-center mb-12">How It Works</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {[
+            { s: "01", i: "🎯", t: "Pick Your Goal", d: "Tell us what you want to fix — money, health, discipline, or focus." },
+            { s: "02", i: "📋", t: "Get Your Plan", d: "We create a personalized 30-day plan with 3 daily tasks." },
+            { s: "03", i: "🔥", t: "Build Streaks", d: "Complete tasks daily, build streaks, and watch your life transform." },
+          ].map((item, idx) => (
+            <div key={idx} className="glass p-6 text-center hover:bg-white/[0.08] transition-all group">
+              <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">{item.i}</div>
+              <div className="text-xs font-bold text-accent-primary mb-2">STEP {item.s}</div>
+              <h3 className="text-lg font-bold mb-2">{item.t}</h3>
+              <p className="text-sm text-white/40 leading-relaxed">{item.d}</p>
             </div>
-
-            {/* Employee */}
-            <div className="card p-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">For Employees</h3>
-              <p className="text-sm text-gray-500 mb-6">Salary comes, salary goes. Let&apos;s fix that.</p>
-              <ul className="space-y-3 mb-6">
-                {[
-                  "Track salary, expenses, and savings in one place",
-                  "Set budgets: Rent ₹10K, Food ₹8K, EMI ₹5K",
-                  "See projected savings before month ends",
-                  "Get alerts when budget is running low",
-                  "Build gym, reading, meditation habits",
-                  "Monthly reports: Am I saving more than last month?",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
-                    <span className="text-green-500 mt-0.5 flex-shrink-0">&#10003;</span>{item}
-                  </li>
-                ))}
-              </ul>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-xs text-gray-400 mb-1">Average employee saves</p>
-                <p className="text-base font-semibold text-gray-900">₹10,000 – ₹25,000/month</p>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </section>
 
       {/* Features */}
-      <section className="py-24 px-6">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-sm font-medium text-indigo-500 mb-3">Features</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              Powerful features, simple design
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              { title: "1-Tap Expense", desc: "Add expenses in 2 seconds. Pick category, enter amount, done.", tag: "FREE" },
-              { title: "Category Budgets", desc: "Set limits for Food, Transport, Shopping. Get warned before overspending.", tag: "PRO" },
-              { title: "Spending Predictions", desc: "Know when your budget runs out before it's too late.", tag: "PRO" },
-              { title: "Habit Streaks", desc: "Build daily habits. See your consistency. Don't break the chain.", tag: "FREE" },
-              { title: "Weekly Calendar", desc: "Visual view of your habits across the week. Spot patterns.", tag: "PRO" },
-              { title: "Achievements", desc: "Unlock badges: Saver, Week Warrior, Goal Crusher. Stay motivated.", tag: "FREE" },
-              { title: "Smart Insights", desc: "Personalized tips based on your spending patterns to save more.", tag: "PRO" },
-              { title: "Goal Tracking", desc: "Set goals, track progress, celebrate wins.", tag: "FREE" },
-              { title: "Life Score", desc: "One number that shows how well you're managing your life.", tag: "FREE" },
-            ].map((f, i) => (
-              <div key={i} className="card p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">{f.title}</h3>
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${f.tag === "PRO" ? "bg-indigo-50 text-indigo-500" : "bg-gray-100 text-gray-500"}`}>
-                    {f.tag}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+      <section className="relative z-10 max-w-4xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-black text-center mb-4">Everything You Need</h2>
+        <p className="text-center text-white/40 mb-12">One app to track money, habits, and progress</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {[
+            { i: "💰", t: "Expense Tracking", tag: "FREE" }, { i: "🔄", t: "Habit Streaks", tag: "FREE" }, { i: "🎯", t: "Goal Setting", tag: "FREE" },
+            { i: "📊", t: "Life Score", tag: "FREE" }, { i: "🤖", t: "AI Insights", tag: "PRO" }, { i: "📈", t: "Predictions", tag: "PRO" },
+            { i: "📅", t: "Weekly Reports", tag: "PRO" }, { i: "🏆", t: "Achievements", tag: "FREE" }, { i: "⚡", t: "Smart Alerts", tag: "PRO" },
+          ].map((f, idx) => (
+            <div key={idx} className="glass p-4 hover:bg-white/[0.08] transition-all">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-2xl">{f.i}</span>
+                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${f.tag === "PRO" ? "bg-accent-primary/20 text-accent-primary" : "bg-green-500/20 text-green-400"}`}>{f.tag}</span>
               </div>
-            ))}
-          </div>
+              <div className="text-sm font-bold">{f.t}</div>
+            </div>
+          ))}
         </div>
       </section>
 
       {/* Testimonials */}
-      <section className="py-24 px-6 bg-gray-50/50">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-12">
-            <p className="text-sm font-medium text-indigo-500 mb-3">Testimonials</p>
-            <h2 className="text-3xl font-bold text-gray-900">Real people, real savings</h2>
-          </div>
-          <div className="card p-8 text-center relative overflow-hidden" style={{ minHeight: "180px" }}>
-            {testimonials.map((t, i) => (
-              <div key={i} className={`transition-all duration-500 ${i === activeTestimonial ? "opacity-100" : "opacity-0 absolute inset-0 p-8"}`}>
-                <p className="text-base text-gray-700 mb-6 leading-relaxed max-w-md mx-auto">
-                  &ldquo;{t.text}&rdquo;
-                </p>
-                <p className="text-sm font-semibold text-gray-900">{t.name}</p>
-                <p className="text-xs text-gray-400">{t.role}</p>
-              </div>
-            ))}
-            <div className="flex items-center justify-center gap-1.5 mt-6">
-              {testimonials.map((_, i) => (
-                <button key={i} onClick={() => setActiveTestimonial(i)}
-                  className={`h-1.5 rounded-full transition-all ${i === activeTestimonial ? "bg-indigo-500 w-6" : "bg-gray-200 w-1.5"}`} />
-              ))}
+      <section className="relative z-10 max-w-4xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-black text-center mb-12">Real Results</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { n: "Priya K.", q: "Saved ₹8,000 in my first month. The spending insights are eye-opening.", r: "Marketing Executive" },
+            { n: "Rahul S.", q: "21-day gym streak! LifeOS keeps me accountable every single day.", r: "Software Developer" },
+            { n: "Sneha M.", q: "Finally broke my Swiggy addiction. My Life Score went from 35 to 78!", r: "Student" },
+          ].map((t, idx) => (
+            <div key={idx} className="glass p-5">
+              <div className="flex items-center gap-1 mb-3">{[1,2,3,4,5].map(s => <span key={s} className="text-amber-400 text-sm">★</span>)}</div>
+              <p className="text-sm text-white/70 leading-relaxed mb-4">&ldquo;{t.q}&rdquo;</p>
+              <div><div className="text-sm font-bold">{t.n}</div><div className="text-[10px] text-white/30">{t.r}</div></div>
             </div>
-          </div>
+          ))}
         </div>
       </section>
 
       {/* Pricing */}
-      <section className="py-24 px-6" id="pricing">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-sm font-medium text-indigo-500 mb-3">Pricing</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">The math is simple</h2>
-            <p className="text-gray-500">Spend ₹99, save ₹15,000. That&apos;s a 150x return.</p>
+      <section className="relative z-10 max-w-4xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-black text-center mb-4">Simple Pricing</h2>
+        <p className="text-center text-white/40 mb-12">Start free. Upgrade when ready.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+          <div className="glass p-6">
+            <div className="text-sm font-bold text-white/50 mb-1">Free</div>
+            <div className="text-3xl font-black mb-4">₹0</div>
+            <div className="space-y-2 mb-6">{["Expense tracking", "3 habits", "Life Score", "2 goals", "Achievements"].map((f, i) => (<div key={i} className="flex items-center gap-2 text-sm text-white/60"><span className="text-green-400">✓</span>{f}</div>))}</div>
+            <button onClick={() => router.push("/auth")} className="btn-outline w-full py-3 text-sm">Start Free</button>
           </div>
-          <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-            {/* Free */}
-            <div className="card p-8">
-              <p className="text-sm font-medium text-gray-400 mb-4">Free</p>
-              <div className="text-4xl font-bold text-gray-900 mb-1">₹0</div>
-              <p className="text-sm text-gray-400 mb-8">Get started, see where money goes</p>
-              <ul className="space-y-3 mb-8">
-                {["Expense tracking", "3 habits with streaks", "Life Score", "2 goals", "Achievements", "1 daily insight"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-2.5 text-sm text-gray-600">
-                    <span className="text-green-500 flex-shrink-0">&#10003;</span>{item}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/auth?mode=signup" className="block text-center btn-outline py-3 text-sm">
-                Start Free
-              </Link>
-            </div>
-
-            {/* Premium */}
-            <div className="card p-8 border-indigo-200 relative">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-500 text-white px-4 py-1 rounded-full text-xs font-medium">
-                Most popular
-              </div>
-              <p className="text-sm font-medium text-indigo-500 mb-4">Premium</p>
-              <div className="text-4xl font-bold text-gray-900 mb-1">
-                ₹99<span className="text-lg font-normal text-gray-400">/mo</span>
-              </div>
-              <p className="text-sm text-gray-400 mb-8">₹3.3/day — less than a cup of tea</p>
-              <ul className="space-y-3 mb-8">
-                {[
-                  "Everything in Free",
-                  "Spending predictions",
-                  "Category budgets & alerts",
-                  "7-day spending charts",
-                  "Weekly habit calendar",
-                  "Unlimited smart insights",
-                  "Unlimited habits & goals",
-                  "Monthly savings report",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-center gap-2.5 text-sm text-gray-600">
-                    <span className="text-indigo-500 flex-shrink-0">&#10003;</span>{item}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/auth?mode=signup" className="block text-center btn-primary py-3 text-sm">
-                Start Premium — ₹99/mo
-              </Link>
-              <p className="text-xs text-gray-400 text-center mt-3">30-day money-back guarantee</p>
-            </div>
+          <div className="glass p-6 border-accent-primary/30 relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-gradient-primary text-white text-[9px] font-black px-3 py-1 rounded-bl-xl">POPULAR</div>
+            <div className="text-sm font-bold text-accent-primary mb-1">Premium</div>
+            <div className="text-3xl font-black mb-1">₹99<span className="text-lg text-white/40 font-normal">/mo</span></div>
+            <div className="text-xs text-white/30 mb-4">Save ₹15,000+/month</div>
+            <div className="space-y-2 mb-6">{["Everything in Free", "AI insights & predictions", "Unlimited habits & goals", "Spending charts", "Weekly calendar", "Monthly reports"].map((f, i) => (<div key={i} className="flex items-center gap-2 text-sm text-white/60"><span className="text-accent-primary">✓</span>{f}</div>))}</div>
+            <button onClick={() => router.push("/auth")} className="btn-primary w-full py-3 text-sm shadow-glow">Get Premium</button>
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-24 px-6 bg-indigo-500">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Your money is leaking. Let&apos;s fix it.
-          </h2>
-          <p className="text-indigo-200 text-lg mb-10 max-w-lg mx-auto">
-            Every day you wait, you lose money you could be saving. Start tracking today — it takes 2 minutes.
-          </p>
-          <Link href="/auth?mode=signup"
-            className="inline-block bg-white text-indigo-600 px-8 py-3.5 rounded-lg font-semibold text-sm hover:bg-indigo-50 transition-colors">
-            Start Saving Now — Free
-          </Link>
-          <div className="flex items-center justify-center gap-8 mt-8 text-indigo-200 text-sm">
-            <span>Free forever plan</span>
-            <span>No credit card</span>
-            <span>2 min setup</span>
-          </div>
-        </div>
+      {/* Final CTA */}
+      <section className="relative z-10 max-w-3xl mx-auto px-6 py-20 text-center">
+        <h2 className="text-3xl font-black mb-4">Ready to fix your life?</h2>
+        <p className="text-white/40 mb-8">Join 10,000+ people transforming their daily habits.</p>
+        <button onClick={() => router.push("/auth")} className="btn-primary px-12 py-4 text-lg font-bold shadow-glow-lg active:scale-95 transition-all">Start Free Challenge →</button>
       </section>
 
-      {/* Footer */}
-      <footer className="py-12 px-6 border-t border-gray-100">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-gray-400">
-            &copy; 2026 Life<span className="font-semibold text-gray-500">OS</span>. All rights reserved.
-          </p>
-          <div className="flex items-center gap-6 text-sm text-gray-400">
-            <Link href="/pricing" className="hover:text-gray-600 transition-colors">Pricing</Link>
-            <a href="#how-it-works" className="hover:text-gray-600 transition-colors">How it works</a>
-            <a href="mailto:support@lifeos.app" className="hover:text-gray-600 transition-colors">Contact</a>
-          </div>
+      <footer className="relative z-10 border-t border-white/5 py-8">
+        <div className="max-w-4xl mx-auto px-6 flex items-center justify-between">
+          <span className="text-sm font-bold">Life<span className="text-gradient">OS</span></span>
+          <span className="text-xs text-white/20">© 2024 LifeOS. All rights reserved.</span>
         </div>
       </footer>
     </div>
